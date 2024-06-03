@@ -122,11 +122,11 @@ leaflet(dat_2) %>%
   # add_circle_markers(
   #   dat = filter(dat_2, sensor_depth_at_low_tide_m == 0.8), 
   #   fill_col = ~depth_pal_2(sensor_depth_at_low_tide_m), group = "0.8"
-  # ) %>% 
-  add_circle_markers(
-    dat = filter(dat_2, sensor_depth_at_low_tide_m == 1), 
-    fill_col = ~depth_pal_2(sensor_depth_at_low_tide_m), group = "1.0"
-  ) %>% 
+# ) %>% 
+add_circle_markers(
+  dat = filter(dat_2, sensor_depth_at_low_tide_m == 1), 
+  fill_col = ~depth_pal_2(sensor_depth_at_low_tide_m), group = "1.0"
+) %>% 
   add_circle_markers(
     dat = filter(dat_2, sensor_depth_at_low_tide_m == 1.3), 
     fill_col = ~depth_pal_2(sensor_depth_at_low_tide_m), group = "1.3"
@@ -161,8 +161,175 @@ leaflet(dat_2) %>%
   )
 
 
+# 5 m ---------------------------------------------------------------------
 
+dat_5 <- dat %>% 
+  filter(sensor_depth_at_low_tide_m >= 4 & 
+           sensor_depth_at_low_tide_m <= 6) %>% 
+  distinct(county, station, sensor_depth_at_low_tide_m, latitude, longitude) %>% 
+  ss_convert_depth_to_ordered_factor()
 
+depth_pal_5 <- colorFactor(
+  palette =  get_depth_col_palette(
+    length(unique(dat_5$sensor_depth_at_low_tide_m))
+  ),
+  domain = unique(dat_5$sensor_depth_at_low_tide_m)
+)
+
+leaflet(dat_5) %>%
+  addProviderTiles(providers$CartoDB.Positron) %>%
+  add_circle_markers(
+    dat = filter(dat_5, sensor_depth_at_low_tide_m == 4), 
+    fill_col = ~depth_pal_5(sensor_depth_at_low_tide_m), group = "4.0"
+  ) %>% 
+  add_circle_markers(
+    dat = filter(dat_5, sensor_depth_at_low_tide_m == 4.5), 
+    fill_col = ~depth_pal_5(sensor_depth_at_low_tide_m), group = "4.5"
+  ) %>% 
+  add_circle_markers(
+    dat = filter(dat_5, sensor_depth_at_low_tide_m == 4.87), 
+    fill_col = ~depth_pal_5(sensor_depth_at_low_tide_m), group = "4.87"
+  ) %>% 
+  add_circle_markers(
+    dat = filter(dat_5, sensor_depth_at_low_tide_m == 5), 
+    fill_col = ~depth_pal_5(sensor_depth_at_low_tide_m), group = "5.0"
+  ) %>%
+  add_circle_markers(
+    dat = filter(dat_5, sensor_depth_at_low_tide_m == 5.5), 
+    fill_col = ~depth_pal_5(sensor_depth_at_low_tide_m), group = "5.5"
+  ) %>%
+  add_circle_markers(
+    dat = filter(dat_5, sensor_depth_at_low_tide_m == 6), 
+    fill_col = ~depth_pal_5(sensor_depth_at_low_tide_m), group = "6.0"
+  ) %>%
+  addLegend(
+    "bottomright", pal = depth_pal_5, 
+    values = unique(dat_5$sensor_depth_at_low_tide_m),
+    title = "Sensor Depth (m)",
+    opacity = 0.75
+  ) %>% 
+  addLayersControl(
+    baseGroups = "Sensor Depth (m)",
+    overlayGroups = c("4.0", "4.5", "4.87", "5.0", "5.5", "6.0"),
+    options = layersControlOptions(collapsed = FALSE),
+    position = "bottomleft"
+  )
+
+# 10 m ---------------------------------------------------------------------
+
+dat_10 <- dat %>% 
+  filter(sensor_depth_at_low_tide_m >= 8 & 
+           sensor_depth_at_low_tide_m <= 12) %>% 
+  distinct(county, station, sensor_depth_at_low_tide_m, latitude, longitude) %>% 
+  ss_convert_depth_to_ordered_factor()
+
+depth_pal_10 <- colorFactor(
+  palette =  get_depth_col_palette(
+    length(unique(dat_10$sensor_depth_at_low_tide_m))
+  ),
+  domain = unique(dat_10$sensor_depth_at_low_tide_m)
+)
+
+leaflet(dat_10) %>%
+  addProviderTiles(providers$CartoDB.Positron) %>%
+  add_circle_markers(
+    dat = filter(dat_10, sensor_depth_at_low_tide_m == 8), 
+    fill_col = ~depth_pal_10(sensor_depth_at_low_tide_m), group = "8.0"
+  ) %>% 
+  add_circle_markers(
+    dat = filter(dat_10, sensor_depth_at_low_tide_m == 9), 
+    fill_col = ~depth_pal_10(sensor_depth_at_low_tide_m), group = "9.0"
+  ) %>% 
+  add_circle_markers(
+    dat = filter(dat_10, sensor_depth_at_low_tide_m == 9.82), 
+    fill_col = ~depth_pal_10(sensor_depth_at_low_tide_m), group = "9.82"
+  ) %>% 
+  add_circle_markers(
+    dat = filter(dat_10, sensor_depth_at_low_tide_m == 10), 
+    fill_col = ~depth_pal_10(sensor_depth_at_low_tide_m), group = "10.0"
+  ) %>%
+  add_circle_markers(
+    dat = filter(dat_10, sensor_depth_at_low_tide_m == 10.5), 
+    fill_col = ~depth_pal_10(sensor_depth_at_low_tide_m), group = "10.5"
+  ) %>%
+  add_circle_markers(
+    dat = filter(dat_10, sensor_depth_at_low_tide_m == 11), 
+    fill_col = ~depth_pal_10(sensor_depth_at_low_tide_m), group = "11.0"
+  ) %>%
+  add_circle_markers(
+    dat = filter(dat_10, sensor_depth_at_low_tide_m == 12), 
+    fill_col = ~depth_pal_10(sensor_depth_at_low_tide_m), group = "12.0"
+  ) %>%
+  addLegend(
+    "bottomright", pal = depth_pal_10, 
+    values = unique(dat_10$sensor_depth_at_low_tide_m),
+    title = "Sensor Depth (m)",
+    opacity = 0.75
+  ) %>% 
+  addLayersControl(
+    baseGroups = "Sensor Depth (m)",
+    overlayGroups = c("8.0", "9.0", "9.82", "10.0", "10.5", "11.0", "12.0"),
+    options = layersControlOptions(collapsed = FALSE),
+    position = "bottomleft"
+  )
+
+# 15 m ---------------------------------------------------------------------
+
+dat_15 <- dat %>% 
+  filter(sensor_depth_at_low_tide_m >= 13 & 
+           sensor_depth_at_low_tide_m <= 18) %>% 
+  distinct(county, station, sensor_depth_at_low_tide_m, latitude, longitude) %>% 
+  ss_convert_depth_to_ordered_factor()
+
+depth_pal_15 <- colorFactor(
+  palette =  get_depth_col_palette(
+    length(unique(dat_15$sensor_depth_at_low_tide_m))
+  ),
+  domain = unique(dat_15$sensor_depth_at_low_tide_m)
+)
+
+leaflet(dat_15) %>%
+  addProviderTiles(providers$CartoDB.Positron) %>%
+  add_circle_markers(
+    dat = filter(dat_15, sensor_depth_at_low_tide_m == 13), 
+    fill_col = ~depth_pal_15(sensor_depth_at_low_tide_m), group = "13.0"
+  ) %>% 
+  add_circle_markers(
+    dat = filter(dat_15, sensor_depth_at_low_tide_m == 14), 
+    fill_col = ~depth_pal_15(sensor_depth_at_low_tide_m), group = "14.0"
+  ) %>% 
+  add_circle_markers(
+    dat = filter(dat_15, sensor_depth_at_low_tide_m == 15), 
+    fill_col = ~depth_pal_15(sensor_depth_at_low_tide_m), group = "15.0"
+  ) %>% 
+  add_circle_markers(
+    dat = filter(dat_15, sensor_depth_at_low_tide_m == 16), 
+    fill_col = ~depth_pal_15(sensor_depth_at_low_tide_m), group = "16.0"
+  ) %>%
+  add_circle_markers(
+    dat = filter(dat_15, sensor_depth_at_low_tide_m == 17.5), 
+    fill_col = ~depth_pal_15(sensor_depth_at_low_tide_m), group = "17.5"
+  ) %>%
+  add_circle_markers(
+    dat = filter(dat_15, sensor_depth_at_low_tide_m == 17.5), 
+    fill_col = ~depth_pal_15(sensor_depth_at_low_tide_m), group = "17.5"
+  ) %>%
+  add_circle_markers(
+    dat = filter(dat_15, sensor_depth_at_low_tide_m == 18), 
+    fill_col = ~depth_pal_15(sensor_depth_at_low_tide_m), group = "18.0"
+  ) %>%
+  addLegend(
+    "bottomright", pal = depth_pal_15, 
+    values = unique(dat_15$sensor_depth_at_low_tide_m),
+    title = "Sensor Depth (m)",
+    opacity = 0.75
+  ) %>% 
+  addLayersControl(
+    baseGroups = "Sensor Depth (m)",
+    overlayGroups = c("13.0", "14.0", "15.0", "16.0", "17.5", "18.0"),
+    options = layersControlOptions(collapsed = FALSE),
+    position = "bottomleft"
+  )
 
 
 
