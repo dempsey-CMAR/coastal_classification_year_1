@@ -1,0 +1,107 @@
+---
+title: "Coastal Inverse Path Distance Weighting: Notes"
+format:
+  html:
+    toc: true
+    toc-depth: 3
+    embed-resources: true
+editor_options: 
+  chunk_output_type: console
+---
+
+[From Stachelek et al, 2015](https://arxiv.org/pdf/1504.01146.pdf)
+
+- Standard Euclidean interpolations in coastal settings tend to yield inaccurate results because they extend through barriers in the landscape such as peninsulas, islands, and submerged banks.
+
+- We recently developed a method for non-Euclidean interpolation by inverse path distance weighting (IPDW) in order to account for these barriers.
+
+- The algorithms were implemented as part of an R package and made available from R repositories.
+
+- IPDW was notably more accurate than IDW in the presence of intense spatial gradients.
+
+## Introduction
+
+- Interpolation approaches vary in complexity from simple inverse distance
+techniques to complex kriging algorithms (Zimmerman et al. 1999).
+
+- In many settings, the analyst can simply choose an interpolation technique based on the properties of the sampling network and the spatial dependence of the variable of interest (Isaaks et al. 1989).
+
+- There are several existing methods for dealing with the presence of barriers while using standard Euclidean interpolations. 
+  - These include "interpolation with barriers" whereby a static barrier is introduced in order to isolate disparate portions of the study area (Krivoruchko and Gribov 2004; Soderqvist and Patino 2010). 
+  - This approach is not ideal because points are excluded from the interpolation based on line-of-sight. 
+  - As a result, the inherent connectivity present in aquatic environments (water flow, diffusion) is not taken into account.
+
+- Alternative method for interpolation using inverse path distance weighting (IPDW).
+  - Honors barriers in the landscape while more accurately accounting for aquatic
+connectivity because it can "round corners."
+
+- IPDW belongs to a class of techniques that use "in-water"path distances (non-Euclidean) rather than "as the crow flies" (Euclidean) distances as input to interpolation routines (Little et al. 1997).
+  - Unfortunately, these techniques have received limited consideration in part because until recently they had not been implemented within existing software tools.
+
+- In this study, we utilize a software tool that uses path distances as input to inverse distance weighting (IDW). 
+
+- IDW is a deterministic interpolation method that has some disadvantages relative to geostatistical methods such as kriging because there is no model fitting and thus no assessment of prediction error. Path distances have been used as input to kriging with some success (Krivoruchko and Gribov 2004; Lopez-Quilez and Munoz 2009) but software tools are still under development.
+
+## Methods
+
+- Field measurements were collected during shipboard cruises using a Dataflow onboard flowthrough collection system.
+
+- Each survey generated approximately 6,000 data points across an approximately 600
+km2 portion of northern Florida Bay, eastern Florida Bay, and southern Biscayne Bay (Figure
+1).
+
+- IDW is a deterministic interpolation procedure that estimates values at prediction
+points (V) using the following equation:
+
+$$ V = \frac{\sum_{i=1}^n v_i \frac{1}{d_i^p}} {\sum_{i=1}^n \frac{1}{d_i^p}} $$
+where $d$ is the distance between prediction and measurement points, $v_i$ is the measured parameter value, and $p$ is a power parameter.
+
+- The advantage of IPDW is that it uses non-Euclidean "path distance" for $d$.
+  
+- This paper:
+  - Land areas are given an impossibly high travel cost in order to restrict the interpolation neighborhood distances $d$ to "in-water" distances.
+  - IPDW was carried out using the routines in the `ipdw` R package (Stachelek 2014). 
+  - The order of operations to calculate spatial weights followed Suominen et al. (2010). 
+  - Path distance calculations were computed following Csardi and Nepusz (2006) and van Etten (2014).
+
+### `ipdw`
+
+- The `ipdw` package computes path distances from each prediction point to each point in a
+set of measurement points.
+
+- Path distances are calculated by tracking the accumulated cell-to cell movement within an underlying cost raster. 
+
+- In this study, the cost raster was constructed by converting a vector shapefile representing the islands and shallow banks within Florida Bay and reclassifying open water and land areas to 1 and 10,000 respectively. 
+  - To ensure that the maximum cost path distance between interpolation and measurement points could not exceed the value assigned to land areas. 
+  
+- The cell size of the output raster was optimized in order to balance the need for the resolution of narrow barrier features against the limitations of computation time for the IPDW procedure.
+  - Optimization was performed by varying the size (grain) of the cost raster grid (50 - 100 m), calculating the edge density of water/land areas using the functions presented in VanDerWal et al. (2014), and visualizing this information using "scalograms" (Rutchey and Godin 2009).
+  - Scalograms are plots of cell size versus the value of a given landscape metric. A 60 meter cell size was chosen because there was a marked change in the slope of the scalograms after increasing the resolution from 60 to 70 m.
+
+- Interpolation accuracy has been shown to be greatly increased when regularly sampled datasets are available (Isaaks et al. 1989; Zimmerman et al. 1999).
+
+- Interpolation accuracy was determined using a cross validation procedure that compared interpolated predictions against the validation dataset. 
+ - The output was used to calculate prediction mean absolute error (MAE) and root mean squared error (RMSE).
+  -  We focus primarily on MAE as a diagnostic because it is less sensitive to outliers.
+
+## Results
+
+Difference between IPDW and IDW:
+
+```{r}
+#| echo: false
+#| message: false
+#| fig-align: center
+
+library(here)
+knitr::include_graphics(here("1_ipdw_resources/ex-data/figure4.png"))
+
+```
+
+
+## Discussion
+
+- Non-Euclidean interpolation (IPDW) method provided increased accuracy and resolution of water quality features relative to Euclidean interpolation (IDW).
+
+- However, in the open areas of Florida Bay, there was little improvement in accuracy.
+

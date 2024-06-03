@@ -1,0 +1,54 @@
+---
+title: "raster::calc()"
+format:
+  html:
+    toc: true
+    toc-depth: 3
+    embed-resources: true
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, dpi = 600, fig.width = 8)
+
+library(raster)
+
+```
+
+`r Sys.Date()`
+
+```{r}
+r <- raster(ncols = 5, nrows = 5,
+            xmn = 0, xmx = 5,
+            ymn = 0, ymx = 5)
+r[] <- c(seq(1:25))
+
+plot(r)
+text(r)
+
+# using a RasterStack as input
+s <- stack(r, r*2, sqrt(r))
+
+plot(s$layer.1)
+text(s$layer.1)
+
+plot(s$layer.2)
+text(s$layer.2)
+
+plot(s$layer.3)
+text(s$layer.3, digits = 2)
+
+# return a RasterLayer
+rs1 <- calc(s, sum)
+
+plot(rs1)
+text(rs1, digits = 2)
+
+# check first 4 cells:
+1 + 1*2 + sqrt(1)
+2 + 2*2 + sqrt(2)
+3 + 3*2 + sqrt(3)
+4+ 4*2 + sqrt(4)
+```
+

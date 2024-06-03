@@ -1,0 +1,108 @@
+---
+title: "Inverse Distance Weighting"
+format:
+  html:
+    toc: true
+    toc-depth: 3
+    embed-resources: true
+editor_options: 
+  chunk_output_type: console
+---
+
+## [ArcGIS Pro: How IDW Works](https://pro.arcgis.com/en/pro-app/latest/tool-reference/3d-analyst/how-idw-works.htm)
+
+- Inverse distance weighted (IDW) interpolation determines cell values using a linearly weighted combination of a set of sample points, where the weight is a function of inverse distance. 
+  - Assumes that the variable being mapped decreases in influence with distance from its sampled location.
+
+### Power Parameter ($p$)
+
+- IDW relies mainly on the inverse of the distance raised to a mathematical power. 
+- $p$ controls the significance of known points on the interpolated values based on their distance from the output point.
+- A positive, real number. Default value is 2.
+- High $p$: more emphasis is put on the nearest points 
+  - surface will be less smooth
+  - As $p$ increases, the interpolated values approach the value of the nearest sample point.
+- Lower $p$: gives more influence to surrounding points that are farther away (smoother surface)
+- An optimal value for $p$ can be considered to be where the minimum mean absolute error is at its lowest. 
+
+### Limiting the points used for interpolation
+
+- The characteristics of the interpolated surface can also be controlled by limiting the input points used in the calculation of each output cell value. 
+  - This can also improve processing speeds. 
+- Input points far away from the cell location where the prediction is being made may have poor or no spatial correlation, so there may be reason to eliminate them from the calculation.
+
+### Variable Search Radius
+
+- The number of points used in calculating the value of the interpolated cell is specified, which makes the radius distance vary for each interpolated cell.
+  - Size of neighborhood depends on the density of the measured points near the interpolated cell. 
+- Can specify a maximum distance that the search radius cannot exceed.
+  - If not enough points in the radius, the prediction for that location will be performed on the number of measured points within the maximum distance. 
+- Use smaller neighborhoods or a minimum number of points when the phenomenon has a great amount of variation.
+
+### Fixed search radius
+
+- The fixed radius dictates the circle of the neighborhood.
+- All the measured points that fall within the radius will be used in the calculation of each interpolated cell. 
+- When there are fewer measured points in the neighborhood than the specified minimum, the search radius will increase until it can encompass the minimum number of points. 
+- Likely to be different numbers of measured points used in the different neighborhoods for the various predictions.
+
+### Using barriers
+
+A barrier is a polyline dataset used as a breakline that limits the search for input sample points. A polyline can represent a cliff, ridge, or some other interruption in a landscape. Only those input sample points on the same side of the barrier as the current processing cell will be considered.
+
+
+## [ArcGIS Pro: How inverse distance weighted interpolation works](https://pro.arcgis.com/en/pro-app/latest/help/analysis/geostatistical-analyst/how-inverse-distance-weighted-interpolation-works.htm)
+
+- Explicitly makes the assumption that things that are close to one another are more alike than those that are farther apart. 
+
+- Power function:
+
+```{r}
+#| echo: false
+#| message: false
+#| fig-align: center
+
+library(here)
+knitr::include_graphics(
+  here("1_ipdw_resources/ex-data/power_function.png"),
+  dpi = 10
+)
+```
+
+- Search neighborhood
+  -  To speed calculations, you can exclude the more distant points that will have little influence on the prediction.
+  - It is common practice to limit the number of measured values by specifying a search neighborhood. 
+  - The shape of the neighborhood restricts how far and where to look for the measured values to be used in the prediction. 
+  - Other neighborhood parameters restrict the locations that will be used within that shape.
+
+- Considerations
+  - IDW is an exact interpolator, where the maximum and minimum values in the interpolated surface can only occur at sample points.
+    - Not a problem for us if sample points include [0, 1]
+  - The output surface is sensitive to clustering and the presence of outliers.
+    - Clustering could be a problem for us
+  - Since IDW does not provide prediction standard errors, justifying the use of this model may be problematic.
+    - We can create 95 % CI or other metrics
+    
+# [Khouni et al., 2021](https://www.sciencedirect.com/science/article/pii/S235218642100540X#sec2)
+
+## IDW
+
+- The spatial interpolation was conducted using The Inverse Distance Weighted (IDW) interpolation available in the ArcGIS® Geostatistical Analyst toolbar. 
+- IDW interpolation is a technique, which is largely used in mapping of variables. 
+- It is an exact and convex interpolation method that fits only the continuous model of spatial variation. 
+- This method is originated in mining & geological engineering based on locations weighted only by distance (Jones et al., 2003)
+- The value obtained from the known location is used to estimate the value of a variable at some new locations. 
+- The basic principal of IDW interpolation is using a weighted linear combination set of sample points, it counts on the two statistical and mathematical methods in order to create surfaces and calculate the predictions of unmeasured points. 
+
+## Evaluation
+
+- Interpolation accuracy was checked using validation tests (n-fold cross validation).
+- The calculated statistics serve as diagnostics that indicate whether the interpolation method is feasible and reasonable for map production (Tanjung et al., 2020). 
+- The cross-validation tests are part of the output of the Geostatistical Analyst Toolbar results in ArcGIS 10.3 which provide an exploratory analysis results (Wu et al., 2019).
+
+- Cross-validation statistics: (i) Mean Error (ME) and (ii) Root Mean Square Error (RMSE) (Zhang and Shen, 2015). 
+  - The ME reflects the prediction error range and provides an absolute measure of the size of the error
+  - The RMSE indicates the accuracy of spatial analysis in geographic information system and reflects both the sensitivity and the extremum of the predicted value (Njeban, 2018).
+- The coefficient of determination (R2) should be evaluated (Tanjung et al., 2020).
+
+

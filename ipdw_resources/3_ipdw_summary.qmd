@@ -1,0 +1,324 @@
+---
+title: "Interpolation: Summary & Update"
+format:
+  html:
+    toc: true
+    toc-depth: 3
+    embed-resources: true
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, dpi = 600, fig.width = 8)
+
+library(canadianmaps)
+library(dplyr)
+library(ggplot2)
+library(ggthemes)
+library(here)
+library(ipdw)
+library(RColorBrewer)
+library(readr)
+library(rspat)
+library(sf)
+library(sp)
+library(spatstat)
+library(stringr)
+library(terra)
+library(tidyr)
+library(tmap)
+library(gstat)
+```
+
+`r Sys.Date()`
+
+# Inverse Distance Weighting
+
+- Spatial interpolation that calculates cell values ($V$) based on a weighted average of sample points.
+- The weights are inversely proportional to the distance between the predicted and sampled locations.
+  - This means points further away have less influence on the predicted value.
+  
+- Predicted value $V$ is calculated as $$ V = \frac{\sum_{i=1}^n v_i \frac{1}{d_i^p}} {\sum_{i=1}^n \frac{1}{d_i^p}} $$ where $d$ is the distance between prediction and measurement points, $v_i$ is the measured parameter value, and $p$ is a power parameter.
+
+- Well-known method
+- Considered among the most "simple" spatial interpolation methods
+- Output is sensitive to clustering
+- Does not provide standard errors
+- Typically use training/test datasets to evaluate "goodness of fit"
+
+## Important parameters
+
+Modified from [ArcGIS Pro](https://pro.arcgis.com/en/pro-app/latest/tool-reference/3d-analyst/how-idw-works.htm)
+
+### Power Parameter 
+
+- $p$ controls the significance of the known points based on their distance from the predicted point.
+- As $p$ increases, the interpolated values approach the value of the nearest sample point.
+- Default value is typically 2, although no mathematical or practical reason for this.
+
+```{r}
+#| fig-height: 3.5
+
+data.frame(
+  expand.grid(d = seq(1, 20, 0.1), p = c(0, 1, 2, 5))
+  ) %>% 
+  mutate(w = 1 / d^p) %>% 
+ ggplot(aes(d, w, colour = factor(p), group = factor(p))) +
+  geom_line(linewidth = 1.5) +
+  scale_y_continuous("Relative Weight") +
+  scale_x_continuous("Distance") +
+  scale_colour_discrete("p") +
+  theme_light()
+```
+
+### Neighborhood
+
+- How far and where to look for measured values used to make the prediction.
+
+## Example
+
+Modified from [Interpolation in R](https://mgimond.github.io/Spatial/interpolation-in-r.html)
+
+Precipitation data from Texas:
+
+::: panel-tabset
+
+#### Station Locations
+
+[21 stations]
+
+```{r}
+#| warning: false
+
+# Load precipitation data
+z <- gzcon(url("https://github.com/mgimond/Spatial/raw/main/Data/precip.rds"))
+p_spdf <- readRDS(z)  # Spatial Points Data Frame (used for the model)
+p <- st_as_sf(p_spdf) # data frame (used to plot point locations) (doesn't have a proj4string)
+
+# Load Texas boudary map
+z <- gzcon(url("https://github.com/mgimond/Spatial/raw/main/Data/texas.rds"))
+w_spdf <- readRDS(z)   # Spatial Points Data Frame 
+w <- st_as_sf(w_spdf)  # data frame (used to plot polygon & to clip model)
+
+tm_shape(w) + 
+  tm_polygons() +
+  tm_shape(p) +
+  tm_dots(
+    col="Precip_in", 
+    palette = "RdBu", 
+    title="Sampled precipitation \n(in inches)", size = 0.7) +
+  tm_text("Precip_in", just = "left", xmod = .5, size = 0.7) +
+  tm_legend(legend.outside=TRUE)
+
+```
+
+#### p = 2 
+```{r}
+#| warning: false
+#| message: false
+
+# Create an empty grid where n is the total number of cells
+grd <- as.data.frame(sp::spsample(w_spdf, "regular", n = 100000))
+
+names(grd) <- c("X", "Y")
+sp::coordinates(grd) <- c("X", "Y")
+
+sp::gridded(grd) <- TRUE  # Create SpatialPixel object
+sp::fullgrid(grd) <- TRUE  # Create SpatialGrid object
+
+# Add p_spdf projection information to the empty grid
+crs(grd) <- crs(w_spdf)
+
+# Interpolate the grid cells using a power value of 2 (idp=2.0)
+p_idw <- idw(Precip_in ~ 1, p_spdf, newdata = grd, idp = 2.0)
+
+# Convert to raster object then clip to Texas
+r <- rast(p_idw)
+r.m <- mask(r, w) 
+
+# Plot
+tm_shape(r.m["var1.pred"]) + 
+  tm_raster(
+    n = 10,
+    palette = "RdBu",
+    title="Predicted precipitation \n(in inches)"
+  ) + 
+  tm_shape(p_spdf) + 
+  tm_dots(size = 0.2) +
+  tm_legend(legend.outside = TRUE)
+
+```
+
+#### p = 5
+```{r}
+#| warning: false
+#| message: false
+
+# Interpolate the grid cells using a power value of 5 
+p_idw <- idw(Precip_in ~ 1, p_spdf, newdata = grd, idp = 5)
+
+# Convert to raster object then clip to Texas
+r <- rast(p_idw)
+r.m <- mask(r, w)
+
+# Plot
+tm_shape(r.m["var1.pred"]) + 
+  tm_raster(
+    n = 10,
+    palette = "RdBu",
+    title="Predicted precipitation \n(in inches)"
+  ) + 
+  tm_shape(p_spdf) + 
+  tm_dots(size = 0.2) +
+  tm_legend(legend.outside = TRUE)
+
+```
+
+:::
+
+# Superchill in NS
+
+Map of Nova Scotia with "measured" superchill likelihood. (Gold buffer is 2 km from the coast)
+
+```{r}
+ns <- filter(PROV, PT == "NS") %>% 
+  st_transform(crs = "+proj=utm +zone=20 +ellps=GRS80 +units=m +no_defs")
+
+buff <- st_buffer(ns, dist = 2000)
+
+# stations
+dat <- read_csv(here("1_ipdw_resources/ex-data/sc_likelihood_prelim.csv"), show_col_types = FALSE) %>% 
+  st_as_sf(coords = c("LONGITUDE", "LATITUDE"), crs = 4617) %>% 
+  st_transform(crs = st_crs(ns)) %>% 
+  mutate(
+    geom = as.character(geometry),
+    geom = str_remove(geom, "c\\("),
+    geom = str_remove(geom, "\\)")
+  ) %>% 
+  separate(geom, into = c("east", "north"), sep = ", ")
+
+ggplot() +
+  geom_sf(data = buff, alpha = 0.5, col = "gold", fill = "gold") +
+  geom_sf(data = ns) +
+  geom_sf(data = dat, aes(fill = likelihood), col = 1, pch = 21, size = 3) +
+  scale_fill_gradient(low = "#F7FBFF", high = "#08519C") + 
+  coord_sf(expand = TRUE) +
+  theme_map() +
+  theme(
+    panel.border = element_rect(color = 1, fill = NA),
+    legend.position = "right"
+  )
+```
+
+
+**We want to interpolate AROUND the province, not THROUGH it!!**
+
+# Inverse Path Distance Weighting
+
+- Adds a "cost raster" to the distance calculation.
+- The cost of going through the land is so high that 
+
+
+## Cost Raster
+
+Training points (black) and test points (<span style="color:red;">red</span>).
+
+Note that only point is selected per grid box (so some stations are left out).
+
+
+```{r}
+# CAN make the resolution 500 m, but much slower
+costras <- costrasterGen(
+  dat, ns, extent = "polys", projstr = projection(ns), resolution = 1000)
+
+# find average nearest neighbor
+
+# Creates an object of class "owin" representing an observation window in the two-dimensional plane
+W <- spatstat.geom::owin(
+  range(c(st_bbox(dat)["xmin"], st_bbox(dat)["xmax"])),
+  range(c(st_bbox(dat)["ymin"], st_bbox(dat)["ymax"]))
+)
+
+# Creates an object of class "ppp" representing a point pattern dataset in the two-dimensional plane
+kat.pp <-  spatstat.geom::ppp(
+  st_coordinates(dat)[,1], st_coordinates(dat)[,2], window = W)
+mean.neighdist <- mean(nndist(kat.pp))
+
+# grid building
+gridsize <- mean.neighdist * 2 # mean distance between neighbors x 2
+grainscale.fac <- gridsize / res(costras)[1] # gridsize / resolution
+gridras <- aggregate(costras, fact = grainscale.fac) # create grid raster
+
+plot(gridras)
+
+gridpol <- rasterToPolygons(gridras)
+gridpol$value  <- row.names(gridpol)
+
+# spatial join
+fulldataset.over <- sf::st_join(dat, st_as_sf(gridpol))
+
+# grid selection - there might be more efficient ways to do this!
+set.seed(23634)
+gridlev <- unique(fulldataset.over$value)
+
+for (i in seq_along(gridlev)) {
+  
+  activesub <- subset(fulldataset.over, fulldataset.over$value == gridlev[i])
+  selectnum <- gdata::resample(seq_len(nrow(activesub)), 1)
+  
+  if (i == 1) {
+    training <- activesub[selectnum, ]
+  } else {
+    training <- rbind(training, activesub[selectnum, ])
+  }
+}
+
+validate <- fulldataset.over[!(row.names(fulldataset.over) %in% row.names(training)), ]
+
+plot(costras)
+plot(st_geometry(training), add = TRUE)
+plot(st_geometry(validate), col = "red", add = TRUE)
+
+```
+
+
+## Interpolation
+
+With training dataset:
+
+```{r}
+#| message: false
+#| results: hide
+paramlist <- c("likelihood")
+
+final.ipdw.train <- ipdw(
+  training, costras, range = mean.neighdist * 10, paramlist, overlapped = TRUE
+)
+
+final.ipdw.all <- ipdw(
+  dat, costras, range = mean.neighdist * 10, paramlist, overlapped = TRUE
+)
+```
+
+::: panel-tabset
+
+### Training dataset:
+```{r}
+#| message: false
+#| results: hide
+plot(final.ipdw.train)
+
+```
+
+
+### Whole dataset
+```{r}
+
+plot(final.ipdw.all)
+```
+
+:::
+
+
+

@@ -1,0 +1,195 @@
+---
+title: "gdistance::transition()"
+format:
+  html:
+    toc: true
+    toc-depth: 3
+    embed-resources: true
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, dpi = 600, fig.width = 8)
+```
+
+`r Sys.Date()`
+
+Understand the transition matrix, as used in `pathdistGen()`.
+
+```{r, include=FALSE}
+library(gdistance)
+```
+
+
+# Transition with `max()`
+
+1. Find the maximum value for each pair of cell i and surrounding cell j.
+2. Take the average of these values.
+
+## Example 1
+
+```{r}
+BNG <- CRS("+proj=utm +zone=20 +ellps=GRS80 +units=m +no_defs")
+
+r <- raster(xmn = 0, xmx = 4, ymn = 0, ymx = 4, res = 1, crs = BNG)
+r[] <- c(0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
+
+plot(r)
+text(r)
+```
+
+::: panel-tabset
+### Directions: 4
+```{r}
+r_max <- transition(r, max, directions = 4, symm = FALSE)
+
+plot(raster(r_max), cex = 0.8)
+text(raster(r_max), digits = 3)
+
+```
+
+### Directions: 8
+```{r}
+r_max <- transition(r, max, directions = 8, symm = FALSE)
+
+plot(raster(r_max), cex = 0.8)
+text(raster(r_max), digits = 3)
+
+```
+
+### Directions: 16
+```{r}
+r_max <- transition(r, max, directions = 16, symm = FALSE)
+
+plot(raster(r_max), cex = 0.8)
+text(raster(r_max), digits = 3)
+
+```
+
+:::
+
+## Example 2
+
+```{r}
+r <- raster(xmn = 0, xmx = 9, ymn = 0, ymx = 9, res = 1, crs = BNG)
+r[] <- c(rep(0, 40), 1, rep(0, 40))
+
+plot(r)
+text(r)
+```
+
+::: panel-tabset
+### Directions: 4
+```{r}
+r_max <- transition(r, max, directions = 4, symm = FALSE)
+
+plot(raster(r_max), cex = 0.8)
+text(raster(r_max), digits = 3)
+
+```
+
+### Directions: 8
+```{r}
+r_max <- transition(r, max, directions = 8, symm = FALSE)
+
+plot(raster(r_max), cex = 0.8)
+text(raster(r_max), digits = 3)
+
+```
+
+### Directions: 16
+```{r}
+r_max <- transition(r, max, directions = 16, symm = FALSE)
+
+plot(raster(r_max), cex = 0.8)
+text(raster(r_max), digits = 3)
+
+```
+
+:::
+
+## Example 3
+
+```{r}
+r <- raster(xmn = 0, xmx = 4, ymn = 0, ymx = 4, res = 1, crs = BNG)
+r[] <- c(0, 2, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
+
+plot(r)
+text(r)
+```
+
+::: panel-tabset
+### Directions: 4
+```{r}
+
+r_max <- transition(r, max, directions = 4, symm = FALSE)
+
+plot(raster(r_max), cex = 0.8)
+text(raster(r_max), digits = 3)
+
+```
+
+### Directions: 8
+```{r}
+r_max <- transition(r, max, directions = 8, symm = FALSE)
+
+plot(raster(r_max), cex = 0.8)
+text(raster(r_max), digits = 3)
+
+```
+
+### Directions: 16
+```{r}
+r_max <- transition(r, max, directions = 16, symm = FALSE)
+
+plot(raster(r_max), cex = 0.8)
+text(raster(r_max), digits = 3)
+
+```
+
+:::
+
+# Transition with `1 / max()`
+
+## Example 1
+
+```{r}
+BNG <- CRS("+proj=utm +zone=20 +ellps=GRS80 +units=m +no_defs")
+
+r <- raster(xmn = 0, xmx = 4, ymn = 0, ymx = 4, res = 1, crs = BNG)
+r[] <- c(1, 1, 1, 1, 1, 2, rep(1, 10))
+
+plot(r)
+text(r)
+```
+
+::: panel-tabset
+### Directions: 4
+```{r}
+r_max <- transition(r, function(x) 1/max(x), directions = 4, symm = FALSE)
+
+plot(raster(r_max), cex = 0.8)
+text(raster(r_max), digits = 3)
+
+```
+
+### Directions: 8
+```{r}
+r_max <- transition(r, function(x) 1/max(x), directions = 8, symm = FALSE)
+
+plot(raster(r_max), cex = 0.8)
+text(raster(r_max), digits = 3)
+
+```
+
+### Directions: 16
+```{r}
+r_max <- transition(r, function(x) 1/max(x), directions = 16, symm = FALSE)
+
+plot(raster(r_max), cex = 0.8)
+text(raster(r_max), digits = 3)
+
+```
+
+:::
