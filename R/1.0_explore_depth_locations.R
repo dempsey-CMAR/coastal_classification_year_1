@@ -1,22 +1,10 @@
 # June 3, 2024
-# This script imports CMP data and exports the QC'd temperature data for
-# Coastal Classification Analysis.
+# This script imports CMP data maps sensors near 2, 5, 10, and 15 m.
+# Maps were used to inform the function `assign_standard_depths()`
 
 # Data sent to the NS Open Data Portal March 2024
 # Automated and Human-in-Loop QC applied
 # Suspect/Of Interested and Not Evaluated flags were reviewed and included
-
-# 2023_cmp_temperature_data.rds
-## Temperature observations
-## Filtered out freshwater stations
-## Filtered out depths greater than 15 m
-
-# heat_stress_events_18deg_24hrs_not_filtered.rds
-## Duration of heat stress events by county, station, and depth
-## heat stress threshold = 18 degree C
-## heat stress for 24 hours after observation >= 18 deg C
-
-## preliminary only - data series not standardized
 
 library(dplyr)
 library(ggplot2)
@@ -24,16 +12,20 @@ library(here)
 library(leaflet)
 library(lubridate)
 library(qaqcmar)
+library(raster)
 library(sensorstrings)
 library(tgc)
 library(viridis)
 
-source(here("functions/assign_standard_depths.R"))
 source(here("functions/map_stations_by_years_data.R"))
 
-# map params --------------------------------------------------------------
+get_depth_col_palette <- colorRampPalette(viridis(8, option = "D", direction = -1))
 
-theme_set(theme_light())
+# create raster grid
+costras <- raster(here("output/costras/costras_500m.tif"))
+gridras <- raster::aggregate(costras, fact = 40)
+gridpol <- rasterToPolygons(gridras)
+grid <- spTransform(gridpol, CRS("+init=epsg:4326")) 
 
 # import all CMP data -----------------------------------------------------
 
@@ -48,7 +40,7 @@ dat <- dat_all %>%
     sensor_depth_at_low_tide_m <= 18,
     qc_flag_temperature_degree_c != 4
   ) %>%
-  select(
+  dplyr::select(
     -string_configuration,
     -contains("dissolved_oxygen"),
     -contains("salinity"),
@@ -86,11 +78,7 @@ dat <- dat %>%
     by = join_by(county, station, deployment_range,
                  sensor_type, sensor_serial_number,
                  sensor_depth_at_low_tide_m)
-  ) %>% 
-  # nudge depths where required
-  assign_standard_depths() %>% 
-  select(-sensor_depth_at_low_tide_m) %>% 
-  rename(sensor_depth_at_low_tide_m = standard_depth_m)
+  ) 
 
 gc()
 
@@ -109,36 +97,30 @@ depth_pal_2 <- colorFactor(
   domain = unique(dat_2$sensor_depth_at_low_tide_m)
 )
 
+
 leaflet(dat_2) %>%
   addProviderTiles(providers$CartoDB.Positron) %>%
-  # add_circle_markers(
-  #   dat = filter(dat_2, sensor_depth_at_low_tide_m == 0.4), 
-  #   fill_col = ~depth_pal_2(sensor_depth_at_low_tide_m), group = "0.4"
-  # ) %>% 
-  # add_circle_markers(
-  #   dat = filter(dat_2, sensor_depth_at_low_tide_m == 0.5), 
-  #   fill_col = ~depth_pal_2(sensor_depth_at_low_tide_m), group = "0.5"
-  # ) %>% 
-  # add_circle_markers(
-  #   dat = filter(dat_2, sensor_depth_at_low_tide_m == 0.8), 
-  #   fill_col = ~depth_pal_2(sensor_depth_at_low_tide_m), group = "0.8"
-# ) %>% 
-add_circle_markers(
-  dat = filter(dat_2, sensor_depth_at_low_tide_m == 1), 
-  fill_col = ~depth_pal_2(sensor_depth_at_low_tide_m), group = "1.0"
-) %>% 
+  addPolygons(
+    dat = grid, weight = 1, color = "black",
+    fillColor = NA, fillOpacity = 0,
+    group = "Sample Grid"
+  ) %>% 
+  add_circle_markers(
+    dat = filter(dat_2, sensor_depth_at_low_tide_m == 1), 
+    fill_col = ~depth_pal_2(sensor_depth_at_low_tide_m), group = "1.0"
+  ) %>% 
   add_circle_markers(
     dat = filter(dat_2, sensor_depth_at_low_tide_m == 1.3), 
     fill_col = ~depth_pal_2(sensor_depth_at_low_tide_m), group = "1.3"
   ) %>% 
-  # add_circle_markers(
-  #   dat = filter(dat_2, sensor_depth_at_low_tide_m == 1.5), 
-  #   fill_col = ~depth_pal_2(sensor_depth_at_low_tide_m), group = "1.5"
-  # ) %>% 
-  # add_circle_markers(
-  #   dat = filter(dat_2, sensor_depth_at_low_tide_m == 1.6), 
-  #   fill_col = ~depth_pal_2(sensor_depth_at_low_tide_m), group = "1.6"
-  # ) %>% 
+  add_circle_markers(
+    dat = filter(dat_2, sensor_depth_at_low_tide_m == 1.5),
+    fill_col = ~depth_pal_2(sensor_depth_at_low_tide_m), group = "1.5"
+  ) %>%
+  add_circle_markers(
+    dat = filter(dat_2, sensor_depth_at_low_tide_m == 1.6),
+    fill_col = ~depth_pal_2(sensor_depth_at_low_tide_m), group = "1.6"
+  ) %>%
   add_circle_markers(
     dat = filter(dat_2, sensor_depth_at_low_tide_m == 2), 
     fill_col = ~depth_pal_2(sensor_depth_at_low_tide_m), group = "2.0"
@@ -148,17 +130,23 @@ add_circle_markers(
     fill_col = ~depth_pal_2(sensor_depth_at_low_tide_m), group = "3.0"
   ) %>% 
   addLegend(
-    "bottomright", pal = depth_pal_2, 
+    "topright", pal = depth_pal_2, 
     values = unique(dat_2$sensor_depth_at_low_tide_m),
     title = "Sensor Depth (m)",
     opacity = 0.75
   ) %>% 
   addLayersControl(
     baseGroups = "Sensor Depth (m)",
-    overlayGroups = c("1.0", "1.3", "2.0", "3.0"),
+    overlayGroups = c("1.0", "1.3", "1.5", "1.6", "2.0", "3.0"),
     options = layersControlOptions(collapsed = FALSE),
-    position = "bottomleft"
+    position = "bottomright"
+  ) %>% 
+  addScaleBar(
+    position = "bottomleft", 
+    options = scaleBarOptions(imperial = FALSE)
   )
+
+  
 
 
 # 5 m ---------------------------------------------------------------------
@@ -178,6 +166,11 @@ depth_pal_5 <- colorFactor(
 
 leaflet(dat_5) %>%
   addProviderTiles(providers$CartoDB.Positron) %>%
+  addPolygons(
+    dat = grid, weight = 1, color = "black",
+    fillColor = NA, fillOpacity = 0,
+    group = "Sample Grid"
+  ) %>% 
   add_circle_markers(
     dat = filter(dat_5, sensor_depth_at_low_tide_m == 4), 
     fill_col = ~depth_pal_5(sensor_depth_at_low_tide_m), group = "4.0"
@@ -203,7 +196,7 @@ leaflet(dat_5) %>%
     fill_col = ~depth_pal_5(sensor_depth_at_low_tide_m), group = "6.0"
   ) %>%
   addLegend(
-    "bottomright", pal = depth_pal_5, 
+    "topright", pal = depth_pal_5, 
     values = unique(dat_5$sensor_depth_at_low_tide_m),
     title = "Sensor Depth (m)",
     opacity = 0.75
@@ -212,8 +205,13 @@ leaflet(dat_5) %>%
     baseGroups = "Sensor Depth (m)",
     overlayGroups = c("4.0", "4.5", "4.87", "5.0", "5.5", "6.0"),
     options = layersControlOptions(collapsed = FALSE),
-    position = "bottomleft"
+    position = "bottomright"
+  ) %>% 
+  addScaleBar(
+    position = "bottomleft", 
+    options = scaleBarOptions(imperial = FALSE)
   )
+
 
 # 10 m ---------------------------------------------------------------------
 
@@ -232,6 +230,11 @@ depth_pal_10 <- colorFactor(
 
 leaflet(dat_10) %>%
   addProviderTiles(providers$CartoDB.Positron) %>%
+  addPolygons(
+    dat = grid, weight = 1, color = "black",
+    fillColor = NA, fillOpacity = 0,
+    group = "Sample Grid"
+  ) %>% 
   add_circle_markers(
     dat = filter(dat_10, sensor_depth_at_low_tide_m == 8), 
     fill_col = ~depth_pal_10(sensor_depth_at_low_tide_m), group = "8.0"
@@ -261,7 +264,7 @@ leaflet(dat_10) %>%
     fill_col = ~depth_pal_10(sensor_depth_at_low_tide_m), group = "12.0"
   ) %>%
   addLegend(
-    "bottomright", pal = depth_pal_10, 
+    "topright", pal = depth_pal_10, 
     values = unique(dat_10$sensor_depth_at_low_tide_m),
     title = "Sensor Depth (m)",
     opacity = 0.75
@@ -270,7 +273,11 @@ leaflet(dat_10) %>%
     baseGroups = "Sensor Depth (m)",
     overlayGroups = c("8.0", "9.0", "9.82", "10.0", "10.5", "11.0", "12.0"),
     options = layersControlOptions(collapsed = FALSE),
-    position = "bottomleft"
+    position = "bottomright"
+  ) %>% 
+  addScaleBar(
+    position = "bottomleft", 
+    options = scaleBarOptions(imperial = FALSE)
   )
 
 # 15 m ---------------------------------------------------------------------
@@ -290,6 +297,11 @@ depth_pal_15 <- colorFactor(
 
 leaflet(dat_15) %>%
   addProviderTiles(providers$CartoDB.Positron) %>%
+  addPolygons(
+    dat = grid, weight = 1, color = "black",
+    fillColor = NA, fillOpacity = 0,
+    group = "Sample Grid"
+  ) %>% 
   add_circle_markers(
     dat = filter(dat_15, sensor_depth_at_low_tide_m == 13), 
     fill_col = ~depth_pal_15(sensor_depth_at_low_tide_m), group = "13.0"
@@ -319,7 +331,7 @@ leaflet(dat_15) %>%
     fill_col = ~depth_pal_15(sensor_depth_at_low_tide_m), group = "18.0"
   ) %>%
   addLegend(
-    "bottomright", pal = depth_pal_15, 
+    "topright", pal = depth_pal_15, 
     values = unique(dat_15$sensor_depth_at_low_tide_m),
     title = "Sensor Depth (m)",
     opacity = 0.75
@@ -328,7 +340,11 @@ leaflet(dat_15) %>%
     baseGroups = "Sensor Depth (m)",
     overlayGroups = c("13.0", "14.0", "15.0", "16.0", "17.5", "18.0"),
     options = layersControlOptions(collapsed = FALSE),
-    position = "bottomleft"
+    position = "bottomright"
+  ) %>% 
+  addScaleBar(
+    position = "bottomleft", 
+    options = scaleBarOptions(imperial = FALSE)
   )
 
 
@@ -340,41 +356,5 @@ leaflet(dat_15) %>%
 
 
 
-
-
-
-
-#export
-saveRDS(dat, here("data/2023_cmp_temperature.rds"))
-
-
-# heat stress events - to explore -----------------------------------------
-
-dat <- readRDS(here("data/2023_cmp_temperature.rds"))
-
-dat_heat_stress <- dat %>%
-  select(-contains("flag")) %>%
-  rename(
-    TIMESTAMP = timestamp_utc,
-    DEPTH = sensor_depth_at_low_tide_m,
-    VALUE = temperature_degree_c
-  )
-
-# preliminary heat stress event = obs > 18 degrees + 24 hours
-heat_stress_24 <- dat_heat_stress %>%
-  identify_heat_stress_events(county, station) %>%
-  mutate(sensor_depth_at_low_tide_m = round(DEPTH)) %>%
-  ss_convert_depth_to_ordered_factor() %>%
-  mutate(
-    year_utc = factor(year(stress_start)),
-    month_utc = month(stress_start),
-    event_duration_days = difftime(stress_end, stress_start, units = "days"),
-    event_duration_days = round(unclass(event_duration_days), digits = 2)
-  )
-
-saveRDS(
-  heat_stress_24,
-  file = here("data/heat_stress_events_18deg_24hrs_not_filtered.rds")
-)
 
 
