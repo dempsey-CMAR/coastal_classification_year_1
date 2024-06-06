@@ -34,14 +34,10 @@ library(viridis)
 
 source(here("functions/map_stations_by_years_data.R"))
 source(here("functions/assign_standard_depths.R"))
+source(here("functions/merge_stations.R"))
 
 get_depth_col_palette <- colorRampPalette(viridis(8, option = "D", direction = -1))
 
-# create raster grid
-costras <- raster(here("output/costras/costras_500m.tif"))
-gridras <- raster::aggregate(costras, fact = 40)
-gridpol <- rasterToPolygons(gridras)
-grid <- spTransform(gridpol, CRS("+init=epsg:4326")) 
 
 # import all CMP data -----------------------------------------------------
 
@@ -95,12 +91,15 @@ dat <- dat %>%
                  sensor_type, sensor_serial_number,
                  sensor_depth_at_low_tide_m)
   ) %>% 
+  # standard depths
   assign_standard_depths() %>% 
   rename(
     original_sensor_depth_m = sensor_depth_at_low_tide_m,
     sensor_depth_at_low_tide_m = standard_depth_m
     ) %>% 
-  filter(sensor_depth_at_low_tide_m %in% c(2, 5, 10, 15))
+  filter(sensor_depth_at_low_tide_m %in% c(2, 5, 10, 15)) %>% 
+  # rename
+  merge_stations()
 
 gc()
 
