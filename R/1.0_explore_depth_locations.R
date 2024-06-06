@@ -14,6 +14,7 @@ library(lubridate)
 library(qaqcmar)
 library(raster)
 library(sensorstrings)
+library(stringr)
 library(tgc)
 library(viridis)
 
@@ -81,6 +82,27 @@ dat <- dat %>%
   ) 
 
 gc()
+
+
+# station names -----------------------------------------------------------
+dat_st <- dat %>% 
+  distinct(county, station, latitude, longitude) 
+
+renamed <- dat_st %>% 
+  filter(str_detect(station, " 1")) %>% 
+  distinct(county, station)
+  
+leaflet(dat_st) %>%
+  addProviderTiles(providers$CartoDB.Positron) %>%
+  addCircleMarkers(
+    data = dat_st,
+    lng = ~longitude, lat = ~latitude, label = ~station,
+    weight = 1,
+    color = "black",
+    fillOpacity = 0.75,
+    radius = 4,
+  )
+
 
 # 2 m ---------------------------------------------------------------------
 
