@@ -1,0 +1,1057 @@
+---
+title: ""
+format:
+  html:
+    toc: true
+    toc-depth: 3
+    embed-resources: true
+editor_options: 
+  chunk_output_type: console
+bibliography: cc_references.bib
+params: 
+  standard_depth: standard_depth
+  min_number_years: min_number_years
+  costras_res: costras_res
+  range_factor: range_factor
+  dist_power: dist_power
+  grid_factor: grid_factor
+  base_grid: base_grid
+  training_seed: training_seed
+  like_offset: like_offset
+---
+
+```{r, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, dpi = 600, fig.width = 8)
+
+library(canadianmaps)
+library(dplyr)
+library(DT)
+library(ggplot2)
+library(ggthemes)
+library(glue)
+library(here)
+library(ipdw)
+library(leaflet)
+library(lubridate)
+library(readr)
+library(plotly)
+library(purrr)
+library(RColorBrewer)
+library(sf)
+library(spatstat)
+library(sensorstrings)
+library(stringr)
+library(summaryplots)
+library(tidyr)
+library(viridis)
+
+source(here("functions/ipdw_generate_sample_grid.R"))
+source(here("functions/ipdw_select_training_stations.R"))
+source(here("functions/ipdw_generate_rasters.R"))
+source(here("functions/nudge_station_coordinates.R"))
+source(here("functions/map_stations_by_years_data.R"))
+source(here("functions/subchunkify.R"))
+
+dt_options <- list(
+  dom = 'ft',
+  paging = FALSE,
+  searching = TRUE,
+  scrollY = "500px",
+  scrollX = "400px",
+  columnDefs = list(list(className = 'dt-center', targets = "_all"))
+)
+
+theme_set(theme_light())
+
+standard_depth <- params$standard_depth
+min_number_years <- params$min_number_years
+costras_res <- params$costras_res
+range_factor <- params$range_factor
+grid_factor <- params$grid_factor
+base_grid <- params$base_grid
+dist_power <- params$dist_power
+training_seed <- params$training_seed
+like_offset <- params$like_offset
+like_offset <- if_else(like_offset == "yes"|like_offset == TRUE, TRUE, FALSE)
+
+interp_params <- data.frame(
+  standard_depth = standard_depth,
+  min_number_years = min_number_years,
+  costras_res = costras_res,
+  range_factor = range_factor,
+  dist_power = dist_power,
+  grid_factor = grid_factor,
+  base_grid = base_grid,
+  training_seed = training_seed,
+  like_offset = like_offset
+)
+
+# interp_params <- data.frame(
+#   standard_depth = 5,
+#   min_number_years = 2,
+#   costras_res = 500,
+#   range_factor = 50,
+#   dist_power = 1,
+#   grid_factor = 2,
+#   base_grid = 8000,
+#   training_seed = 55616,
+#   like_offset = FALSE
+# )
+# 
+# standard_depth <- interp_params$standard_depth
+# min_number_years <- interp_params$min_number_years
+# costras_res <- interp_params$costras_res
+# range_factor <- interp_params$range_factor
+# dist_power <- interp_params$dist_power
+# grid_factor <- interp_params$grid_factor
+# base_grid <- interp_params$base_grid
+# training_seed <- interp_params$training_seed
+# like_offset <- interp_params$like_offset
+
+overlapped <- TRUE # not sure what this does
+paramlist <- "likelihood"
+```
+
+```{r, station-data}
+
+high_temperature <- 18
+
+hs_obs <- readRDS(here("data/2023_cmp_temperature_standard_depths.rds")) %>% 
+  dplyr::filter(sensor_depth_at_low_tide_m == standard_depth) %>%
+  mutate(
+    heat_stress = temperature_degree_c >= high_temperature,
+    year_utc = year(timestamp_utc), 
+    month_utc = month(timestamp_utc)
+  ) %>% 
+   filter(heat_stress == TRUE)
+
+# heat stress events for unfiltered (e.g., not time-standardized) data
+# don't filter for depth yet - want all depths for the shut-in fig
+# filtered for Fig 4 and Table 4
+prelim_heat_stress <- readRDS(
+  here("data/heat_stress_events_18deg_24hrs_not_filtered_standard_depths.rds")) 
+
+
+heat_stress_pal <- colorNumeric(
+  palette = brewer.pal(9, "Reds"),
+  domain = c(0, 1)
+)
+
+year_pal <- viridis(length(unique(prelim_heat_stress$year_utc)), option = "C")
+```
+
+# Temperature Layer: Heat Stress
+
+**`r Sys.Date()`**
+
+Coastal Monitoring Program temperature data was used to calculate a raster layer of heat stress likelihood around the coast of Nova Scotia. This was done in two main steps: 1. First, the likelihood of heat stress at each station was calculated. 2. The results were interpolated to provide a layer around the coast.
+
+This document provides details on the methods and results of these analyses.
+
+## 1. Station Heat Stress
+
+In this analysis, heat stress occurs for 24 hours after any temperature observation ≥ `r standard_depth` °C, and a heat stress event is a continuous period of heat stress at a given station and depth [@RN27145]. For example, @fig-shut-in-heat-stress1 shows all of the heat stress events measured at several depths at Shut-In Island over 6 years. @fig-shut-in-heat-stress2 zooms in to show all of the heat stress events measured in one year. 
+
+::: panel-tabset
+
+### Figure 1 
+```{r}
+#| fig-cap: Heat stress events at Shut-In Island.
+#| label: fig-shut-in-heat-stress1
+
+p <- prelim_heat_stress %>% 
+  filter(station == "Shut-In Island", !is.na(month_utc)) %>% 
+  pivot_longer(
+    cols = c(stress_start, stress_end),
+    names_to = "date",
+    values_to = "state"
+  ) %>% 
+  group_by(year_utc, sensor_depth_at_low_tide_m, event_id) %>%
+  mutate(group_id = cur_group_id()) %>%
+  ungroup() %>% 
+  ggplot(
+    aes(state, 
+        reorder(sensor_depth_at_low_tide_m, desc(sensor_depth_at_low_tide_m)), 
+        color = sensor_depth_at_low_tide_m, 
+        group = group_id,
+        text = paste0("Duration: ", event_duration_days, " days"))
+  ) +
+  geom_line(linewidth = 10) +
+  scale_y_discrete(name = "Depth (m)") +
+  scale_x_datetime("Date") +
+  scale_color_manual(
+    name = "Depth", 
+    values = viridis(6, direction = -1)) +
+  theme(legend.position = "none") +
+  theme(text = element_text(size = 14))
+
+p
+
+# don't use plotly for this fig because some heat stress events are too short to show up
+# ggplotly(p, tooltip = "text")
+```
+
+### Figure 2
+```{r}
+#| fig-cap: Heat stress events at Shut-In Island in 2022.
+#| label: fig-shut-in-heat-stress2
+
+p <- prelim_heat_stress %>% 
+  filter(station == "Shut-In Island", year_utc == 2022) %>% 
+  pivot_longer(
+    cols = c(stress_start, stress_end),
+    names_to = "date",
+    values_to = "state"
+  ) %>% 
+  group_by(year_utc, sensor_depth_at_low_tide_m, event_id) %>%
+  mutate(group_id = cur_group_id()) %>%
+  ungroup() %>% 
+  ggplot(
+    aes(state, 
+        reorder(sensor_depth_at_low_tide_m, desc(sensor_depth_at_low_tide_m)), 
+        color = sensor_depth_at_low_tide_m, 
+        group = group_id,
+        text = paste0("Duration: ", event_duration_days, " days"))
+  ) +
+  geom_line(linewidth = 10) +
+  scale_y_discrete(name = "Depth (m)") +
+  scale_x_datetime("Date") +
+  scale_color_manual(
+    name = "Depth", 
+    values = viridis(6, direction = -1)) +
+  theme(legend.position = "none") +
+  theme(text = element_text(size = 14))
+
+ggplotly(p, tooltip = "text")
+```
+
+### Table 1
+
+The total duration of heat stress events (in days) for each year and depth at Shut-In Island.
+
+```{r}
+prelim_heat_stress %>%
+  filter(station == "Shut-In Island") %>%
+  group_by(sensor_depth_at_low_tide_m, year_utc) %>%
+  mutate(n_heat_stress_days = sum(event_duration_days)) %>% 
+  distinct(
+    sensor_depth_at_low_tide_m, year_utc, n_heat_stress_days
+  ) %>% 
+  datatable(options = dt_options, rownames = FALSE)
+```
+
+:::
+
+### Temperature Data 
+The Centre for Marine Applied Research Coastal Monitoring Program data, as submitted to the [Nova Scotia Open Data Portal](https://data.novascotia.ca/browse?q=coastal%20monitoring%20program&sortBy=relevance) in March 2024, was used for this analysis. Automated and human in the loop quality control were applied to the data set, and observations flagged [Fail]{style="color: #DB4325;"} were excluded from the analysis. Deployments that were > 500 m from the original station location are typically renamed and considered a separate station during quality control processes[^11]. However, to provide longer time series and better capture inter-annual variability, these deployments were considered to be from the same station for this analysis. Data from fresh water stations[^1] was not included because they are not reflective of conditions for coastal aquaculture.
+
+[^1]: Piper Lake, Hourglass Lake, and Sissiboo
+
+[^11]: e.g., a deployment > 500 m from the official Madeline Point coordinates would be re-named Madeline Point 1.
+
+Data from sensors placed ~ `r standard_depth` m below the surface (at low tide) was included in the analysis to reflect typical cage conditions in Nova Scotia. This assumes that if high temperatures occur nearer the surface, all salmon in the net-pen will swim down to at least 5 m to avoid the warmest waters. If heat stress occurs at `r standard_depth` m, it is assumed that there is also heat stress nearer the surface, and that biomass density and other constraints prevent salmon from swimming  deeper to avoid the warm water.
+
+Standard sensor depths are 2, 5, 10, and 15 m below the surface at low tide; however sensors can be placed at different depths for a variety of reasons[^10]. `r if(standard_depth == 5) {"Most of the sensors included in the analysis were placed at 5 m below the surface (222), although several sensors (12) deployed between 4 and 6 m were also included to provide additional coverage around the coast."}` `r if(standard_depth == 2) {"Most of the sensors included in the analysis were placed at 2 m below the surface (246), although several sensors (35) deployed between 1 and 3 m were also included to provide additional coverage around the coast."}`
+
+[^10]: e.g., water depth is too shallow, research priorities, consistency with legacy deployments 
+
+The Coastal Monitoring Program temperature data series cover different time periods depending on the station and depth measured. To compare results between stations, only data series covering potential heat stress months were included in the analysis. Potential heat stress months were defined as July, August, and September, which is when most of the high temperature observations were measured (@fig-heat-stress-year).
+
+::: panel-tabset
+
+### Figure 3
+```{r}
+#| fig-height: 6
+#| fig-cap: Number of high temperature observations each month.
+
+p <- hs_obs %>% 
+  mutate(year_utc = factor(year_utc)) %>% 
+  ggplot(aes(month_utc, fill = year_utc)) +
+  geom_histogram(binwidth = 1) +
+  scale_x_continuous(
+    "Month", breaks = seq(1, 12), limits = c(1, 12),
+    labels = month(seq(1, 12), label = TRUE)
+  ) +
+  scale_y_continuous("Count") +
+  scale_fill_manual("Year", values = year_pal)
+
+ggplotly(p)
+```
+
+### Table 2
+Number and percent of high temperature observations each month.
+```{r}
+#| tbl-cap: Number and percent of high temperature observations each month.
+
+hs_obs %>% 
+  group_by(month_utc) %>% 
+  summarise(n = n()) %>% 
+  ungroup() %>% 
+  mutate(
+    month = month(month_utc, label = TRUE),
+    n_total = sum(n), 
+    n_percent = round(100 * n / n_total, digits = 2),
+  ) %>% 
+  dplyr::select(month, n, n_percent) %>% 
+  datatable(options = list(
+    dom = 'Bft',
+    searching = FALSE,
+    paging = FALSE,
+    columnDefs = list(list(className = 'dt-center', targets = "_all")),
+    buttons = c('copy', 'csv')
+  ), rownames = FALSE)
+```
+
+### Figure 4
+```{r}
+#| message: false
+#| fig-height: 6
+#| fig-cap: Duration of heat stress events each month by year.
+#| label: fig-heat-stress-year
+
+p <- prelim_heat_stress %>% 
+  dplyr::filter(sensor_depth_at_low_tide_m == standard_depth) %>% 
+  mutate(month_utc = month(month_utc)) %>% 
+  group_by(month_utc, year_utc) %>% 
+  summarise(event_duration_days = sum(event_duration_days)) %>% 
+  ggplot(aes(month_utc, event_duration_days, fill = year_utc)) +
+  geom_col(color = NA) +
+  scale_y_continuous("Event Duration (days)") +
+  scale_x_continuous(
+    "Month", breaks = seq(1, 12), limits = c(1, 12),
+    labels = month(seq(1, 12), label = TRUE)
+  ) +
+  scale_fill_manual("Year", values = year_pal) 
+
+ggplotly(p) 
+```
+
+### Table 4
+
+```{r}
+#| tbl-cap: Number and percent of heat stress days each month.
+
+prelim_heat_stress %>% 
+  filter(
+    !is.na(month_utc),
+    sensor_depth_at_low_tide_m == standard_depth
+  ) %>% 
+  group_by(month_utc) %>% 
+  summarise(n = sum(event_duration_days)) %>% 
+  ungroup() %>% 
+  mutate(
+    month = month(month_utc, label = TRUE),
+    n_total = sum(n), 
+    n_percent = round(100 * n / n_total, digits = 2),
+  ) %>% 
+  dplyr::select(month, n, n_percent) %>% 
+  datatable(options = list(
+    dom = 'Bft',
+    searching = FALSE,
+    paging = FALSE,
+    columnDefs = list(list(className = 'dt-center', targets = "_all"))
+  ), rownames = FALSE)
+```
+:::
+
+```{r, import-data}
+#| warning: false
+
+crs_prov <- "+proj=utm +zone=20 +ellps=GRS80 +units=m +no_defs"
+
+nb_pei <- filter(PROV, PT == "NB"|PT=="PE") %>%
+  st_transform(crs = crs_prov)
+
+# needs to be higher res than other provs
+ns <- read_sf(here("data/merged_counties2/Merged_Counties2.shp")) %>% 
+  na.omit() %>% 
+  st_transform(crs = crs_prov) 
+
+bbox <- st_bbox(ns)
+bbox[1] <- 220000 # so that there is water around Digby Neck
+
+costras_sf <- bind_rows(ns, nb_pei) %>% 
+  st_crop(bbox) 
+
+# standardized - for analysis
+dat <- read_csv(
+  here(paste0("output/hs_likelihood_", standard_depth, "_18_24_jas.csv")),
+  show_col_types = FALSE) %>% 
+  nudge_station_coordinates() %>% 
+  st_as_sf(coords = c("longitude", "latitude"), crs = 4617, remove = FALSE) %>% 
+  st_transform(crs = st_crs(ns)) %>% 
+  mutate(
+    geom = as.character(geometry),
+    geom = str_remove(geom, "c\\("),
+    geom = str_remove(geom, "\\)")
+  ) %>% 
+  separate(geom, into = c("east", "north"), sep = ", ") %>% 
+  mutate(station2 = paste(station, likelihood, sep = ": "))
+
+
+if(like_offset == TRUE) {
+  dat <- dat %>% 
+    mutate(likelihood = likelihood + 0.0001) 
+}
+```
+
+
+### Likelihood
+
+For each station, 
+
+`likelihood = Heat Stress Duration/ (Number of Days in Potential Heat Stress Months) * Number of Years of Data`
+
+Station likelihood results are shown for `r standard_depth` m. 
+
+Data series missing observations in June and/or September were included in the analysis if the data series had a time span of at least 100 days, and it was clear that there was no heat stress during the period of missing data[^12]. Data series that may have had heat stress during the period missing data were not included because it was not possible to quantify the duration of heat stress.
+
+[^12]: mean temperature of the observed data in June/September was < 15 °C
+
+To provide adequate coverage around the coast, stations with a minimum of `r min_number_years` years of data were included in the analysis. For a better representation of inter-annual data variability, the analysis should be repeated when more years of data are available.
+
+::: panel-tabset
+
+### Figure 5
+```{r}
+#| results: asis
+#| fig-height: 7
+#| message: false
+
+leaflet(dat) %>%
+  addProviderTiles(providers$CartoDB.Positron) %>%
+  add_circle_markers(
+    dat = filter(dat, n_year == 1), 
+    fill_col = ~heat_stress_pal(likelihood), group = "1"
+  ) %>% 
+  add_circle_markers(
+    dat = filter(dat, n_year == 2), 
+    fill_col = ~heat_stress_pal(likelihood), group = "2"
+  ) %>% 
+  add_circle_markers(
+    dat = filter(dat, n_year == 3), 
+    fill_col = ~heat_stress_pal(likelihood), group = "3"
+  ) %>% 
+  add_circle_markers(
+    dat = filter(dat, n_year == 4), 
+    fill_col = ~heat_stress_pal(likelihood), group = "4"
+  ) %>% 
+  add_circle_markers(
+    dat = filter(dat, n_year >= 5), 
+    fill_col = ~heat_stress_pal(likelihood), group = "5+"
+  ) %>% 
+  addLegend(
+    "topright", pal = heat_stress_pal, 
+    values = c(0, 1),
+    title = "Likelihood",
+    opacity = 0.75
+  ) %>% 
+  addLayersControl(
+    baseGroups = "# Years",
+    overlayGroups = c("1", "2", "3", "4", "5+"),
+    options = layersControlOptions(collapsed = FALSE),
+    position = "bottomright"
+  ) %>% 
+  addScaleBar(
+    position = "bottomleft", 
+    options = scaleBarOptions(imperial = FALSE)
+  )
+```
+
+### Table 3
+```{r}
+dat %>% 
+  as.data.frame() %>% 
+  dplyr::select(
+    county, waterbody, station, n_heat_stress_days, n_year, likelihood
+  ) %>% 
+  datatable(options = dt_options, rownames = FALSE)
+```
+:::
+
+## 2. Interpolation
+
+```{r, costras}
+#| warning: false
+
+dat <- dat %>%
+  filter(n_year >= min_number_years) 
+
+# import or generate costras
+costras <- ipdw_generate_ns_costras(
+  path = here("output/costras"),
+  costras_res = costras_res,
+  costras_sf = costras_sf,
+  dat = dat,
+  projstr = projection(ns)
+)
+
+costras_overlap <- raster::extract(costras, dat)
+
+costras_overlap <- dat %>% 
+  mutate(
+    costras_overlap = costras_overlap,
+    on_land = case_when(
+      costras_overlap == 10000 ~ TRUE,
+      costras_overlap == 1 ~ FALSE
+    )
+  ) %>% 
+  dplyr::select(county, waterbody, station, costras_overlap, on_land) %>% 
+  filter(on_land == TRUE) 
+
+costras_overlap$geometry <- NULL
+```
+
+
+```{r, train-test}
+#| warning: false
+
+grid_prep <- ipdw_generate_sample_grid(
+  dat, costras, base_grid = base_grid, dist_factor = grid_factor)
+
+dat_grid <- grid_prep$sf_grid
+base_grid_m <- grid_prep$base_grid
+grid <- grid_prep$grid
+
+train_prep <- ipdw_select_training_stations(dat_grid, seed = training_seed)
+
+training <- train_prep$training
+
+test <- anti_join(
+  dat_grid, as.data.frame(training) %>% dplyr::select(-contains("costras")),
+  by = join_by(
+    county, station, sensor_depth_at_low_tide_m, n_heat_stress_days, n_year,
+    likelihood, waterbody, 
+    latitude, longitude, geometry, east, north, station2, cell_id)
+)
+
+n_training <- data.frame(n_training = nrow(training))
+n_test <- data.frame(n_test = nrow(test))
+
+```
+
+```{r, rstack-dist}
+# raster stack with one layer for each station
+# each layer holds the accumulated cost ("distance") from the station to every cell (1/d)
+rstack_dist <- ipdw_generate_ns_distances(
+    path = here("output/rstack_dist"),
+    standard_depth = standard_depth,
+    min_number_years = min_number_years,
+    costras_res = costras_res, 
+    range_factor = range_factor, 
+    dist_power = dist_power, 
+    grid_factor = grid_factor, 
+    base_grid = base_grid_m,
+    training_seed = training_seed, 
+    mean_neigh_dist_m = base_grid_m,
+    training = training,
+    costras = costras
+)
+
+# removes rows in training data and corresponding layers in rstack_dist 
+# with likelihood = NA 
+points_layers <- ipdw::rm_na_pointslayers(
+  param_name = "likelihood", sf_ob = training, rstack = rstack_dist
+)
+
+training <- points_layers$sf_ob
+rstack_dist <- points_layers$rstack
+
+# sum the x^distance power from each layer for each cell
+# this is the TOTAL WEIGHT for each cell (i.e., denominator of sum)
+rstack_sum <- raster::calc(rstack_dist, fun = function(x) {
+  sum(x^dist_power, na.rm = TRUE)
+})
+
+# change all 0's to NA (to make underlying shapefile NA)
+rstack_dist_sum <- raster::reclassify(rstack_sum, cbind(0, NA))
+#crs(rstack_dist_sum) <- st_crs(costras)$wkt
+```
+
+```{r, ipdw}
+ipdw <- ipdw(
+  training, costras, 
+  range = base_grid_m * range_factor, # similar to ipdw package vignette
+  paramlist = "likelihood", overlapped = TRUE, progressbar = FALSE
+)
+
+raster::writeRaster(
+  ipdw,
+  filename = here(paste0(
+    "output/interpolation/heat_stress_likelihood_",
+    standard_depth, "_",
+    min_number_years, "_",
+    costras_res, "_",
+    range_factor, "_",
+    dist_power, "_",
+    grid_factor, "_",
+    base_grid, "_",
+    training_seed, "_",
+    ".tif"
+  )), 
+  overwrite = TRUE, bylayer = FALSE
+)
+```
+
+The station likelihoods at `r standard_depth` m were interpolated to provide a heat stress likelihood layer for the coast of Nova Scotia. The inverse path distance weighting (IPDW) algorithm was used for the interpolation [@RN27759].
+
+### Inverse Path Distance Weighting
+
+IPDW is an extension of inverse distance weighting (IDW) [@RN27759]. IDW is a relatively simple, deterministic spatial interpolation method. It estimates values at prediction points using a weighted average of measured values. The weights are inversely proportional to the distance between the measurement and prediction point, which means that measured points further away from the prediction location have less influence on the predicted value. An additional power parameter, $p$, further controls the importance of measured values for calculating the predicted value. As $p$ increases, the interpolated values approach the value of the nearest sample point.
+
+The predicted value is calculated as
+
+$$V = \frac{\sum_{i=1}^n v_i \frac{1}{d_i^p}} {\sum_{i=1}^n \frac{1}{d_i^p}}$$ 
+
+- $V$ = predicted value 
+
+- $d$ = distance between prediction & measurement points
+
+- $v_i$ = measured parameter value
+
+- $p$ = power parameter
+
+The IDW algorithm uses Euclidean distances[^3]. This is not suitable for coastal applications, which should account for barriers (i.e., land) while allowing for connectivity between waterbodies [@RN27759]. The IPDW algorithm calculates $d$ as the cost of travelling a path from the measurement point to the prediction point, where the cost of travelling over land is prohibitive. This is done by introducing a "cost layer", generated from a shapefile of the coast (@fig-ipdw-results). 
+
+[^3]: i.e., "as the crow flies"
+
+### Cost Layer
+
+The Cost layer was generated from shapefiles of Nova Scotia, New Brunswick, and PEI. The Nova Scotia shapefile was higher resolution so that stations in narrow coves and inlets were not interpreted as being on land. This shapefile was generated from the County Boundaries files from the [Nova Scotia Geographic Data Directory](https://nsgi.novascotia.ca/gdd/). The New Brunswick and PEI shapefile data is from the R package [`canadianmaps`](https://github.com/joellecayen/canadianmaps), which provides access to StatCan shapefiles.
+
+Some stations with coordinates that overlapped with the cost raster at a resolution of `r costras_res` m were nudged into more open water so they contributed to the interpolation. Otherwise, the overlapping stations each result in a layer that contributes `NA` to every cell[^9]. 
+
+[^9]: with no `Error`, `Warning`, or `Message` from R
+
+
+### Training and Test Data
+
+The output of IDW and IPDW is sensitive to clustering[^4], and so the interpolation was calculated using a subset of the stations, called "training" data. The remaining stations were used as "test" data to validate the results of the interpolation.
+
+To select training and test stations, a grid was laid over the domain of the cost raster and station locations. If only one station was in a grid cell, this station was used as training data. If more than one station was in a grid cell, one was chosen at random to be in the training dataset. Any remaining stations were used in the test data.
+
+[^4]: groups of measurement points that are close together
+
+### Heat Stress Map
+
+#### Interpolation Parameters
+
+- Minimum number of years of data for station to be included: `r min_number_years`
+- Cost raster resolution[^6]: `r costras_res` m
+- Range factor[^7]: `r range_factor`
+- Power parameter ($p$): `r dist_power`
+- Grid size factor[^5]: `r grid_factor` 
+- Training seed[^8]: `r training_seed`
+- Number of training stations: `r n_training$n_training`
+- Number of test stations: `r n_test$n_test`
+- Sensor depth: `r standard_depth` m
+
+[^5]: informs the size of the sample grid for selecting training and test data.
+[^6]: must balance resolution of narrow channels against the computation time of the IPDW algorithm
+[^7]: informs the maximum distance to a prediction point that a measured value can influence
+[^8]: seed used to randomly select training data when there is more than one station in the training grid cell.
+
+### Interpolation Results: `r standard_depth` m
+
+```{r, map}
+#| fig-height: 7
+#| warning: false
+#| label: fig-ipdw-results
+#| fig-cap: Results of the IPDW interpolation, including the cost layer, sample grid, training and test data, and final heat stress likelihood layer.
+
+cost_pal <- colorFactor(
+  c("#F8F1FF", "#2B061E"), 
+  levels = c("1", "10000"), 
+  na.color = "transparent"
+)
+
+ipdw_r <- ipdw@data
+ipdw@srs <- costras@srs # make sure this is correct
+
+grid <- spTransform(grid, CRS("+init=epsg:4326")) 
+
+leaflet(dat) %>%
+  addProviderTiles(providers$CartoDB.Positron) %>%
+  addRasterImage(
+    costras, colors = cost_pal, 
+    opacity = 0.75, method = "ngb",
+    group = "Cost Layer"
+  ) %>%
+  addRasterImage(
+    ipdw, colors = heat_stress_pal, 
+    opacity = 0.75, method = "ngb",
+    group = "Heat Stress"
+  ) %>% 
+  addPolygons(
+    dat = grid, weight = 1, color = "black",
+    fillColor = NA, fillOpacity = 0,
+    group = "Sample Grid"
+  ) %>% 
+  hideGroup("Sample Grid") %>% 
+  addCircleMarkers(
+    dat = training, 
+    lng = ~longitude, lat = ~latitude, label = ~station2,
+    fillColor = ~heat_stress_pal(likelihood),
+    weight = 1, color = "black", fillOpacity = 0.75, radius = 5,
+    group = "Training"
+  ) %>% 
+  addCircleMarkers(
+    dat = test, 
+    lng = ~longitude, lat = ~latitude, label = ~station2,
+    fillColor = ~heat_stress_pal(likelihood),
+    weight = 1, color = "black", fillOpacity = 0.75, radius = 5,
+    group = "Test"
+  ) %>% 
+  addLayersControl(
+    overlayGroups = c(
+      "Cost Layer", 
+      "Sample Grid",
+      "Training", 
+      "Test", 
+      "Heat Stress"
+    ),
+    options = layersControlOptions(collapsed = FALSE),
+    position = "bottomleft"
+  ) %>% 
+  addLegend(
+    pal = cost_pal,
+    values = c(1, 10000),
+    title = "Cost",
+    group = "Cost Layer",
+    opacity = 0.75
+  ) %>%
+  addLegend(
+    pal = heat_stress_pal,
+    values = c(0, 1),
+    title = "Likelihood",
+    group = "Stations",
+    opacity = 0.75
+  ) 
+```
+
+
+### Validation
+
+The validation procedure compares the observed and predicted likelihood values for the `r n_test$n_test` test stations (@fig-validation). Recall that the test stations were not used to fit the interpolation.
+
+::: panel-tabset
+### Figure 5
+```{r}
+#| fig.height: 6
+#| label: fig-validation
+#| fig-cap: Observed and predicted likelihood values for the test data.
+
+county_pal <- get_county_colour_palette(length(unique(dat$county)))
+
+val <- errorGen(ipdw, test, test$likelihood, plot = FALSE)
+
+val_data <- test %>% 
+  cbind(val[[2]]) %>% 
+  rename("observed likelihood" = validation.data,
+          "predicted likelihood" = predicted)
+ 
+gof <- val[[1]]
+
+p <- ggplot(
+  val_data, 
+  aes(`observed likelihood`, `predicted likelihood`, col = county, text = station)
+) +
+  geom_point() +
+  geom_abline() +
+  scale_colour_manual(values = county_pal) +
+  ggtitle(paste0("R2 = ", gof$r2, "; rmse = ", gof$rmse)) 
+
+ggplotly(p, tooltip = "text")
+
+```
+:::
+
+```{r}
+#| message: false
+
+n_per_cell <- test %>% 
+  group_by(county, cell_id) %>% 
+  summarise(
+    n_test_stations = n(), 
+    min_likelihood = min(likelihood), 
+    max_likelihood = max(likelihood)
+  )
+```
+
+`r if (any(n_per_cell$n_test_stations > 1)) { glue("Note that there are {nrow(n_per_cell %>% filter(n_test_stations > 1))} grid cells with more than one test point (Table 3). For example, there are {max(n_per_cell$n_test_stations)} test stations in one cell in {n_per_cell[which(n_per_cell$n_test_stations == max(n_per_cell$n_test_stations)), ]$county}, with likelihood values ranging from  {n_per_cell[which(n_per_cell$n_test_stations == max(n_per_cell$n_test_stations)), ]$min_likelihood} to {n_per_cell[which(n_per_cell$n_test_stations == max(n_per_cell$n_test_stations)), ]$max_likelihood}. To check how multiple test points per grid cell impacted the validation results, the validation procedure was repeated (@fig-validation2). One test station per grid cell was selected at random to be included in a secondary test data set.")}`
+
+`r if (any(n_per_cell$n_test_stations > 1)) "### Figure 6"`
+::: panel-tabset
+```{r}
+#| fig.height: 6
+#| label: fig-validation2
+#| fig-cap: Observed and predicted likelihood values for the test data.
+
+if (any(n_per_cell$n_test_stations > 1)) {
+  test2 <- ipdw_select_training_stations(test)$training
+  
+  val2 <- errorGen(ipdw, test2, test2$likelihood, plot = FALSE)
+  
+  val_data2 <- test2 %>% 
+    cbind(val2[[2]]) %>% 
+    rename(
+      "observed likelihood" = validation.data,
+      "predicted likelihood" = predicted
+    )
+  
+  gof2 <- val2[[1]]
+  
+  p2 <- ggplot(
+    val_data2, 
+    aes(`observed likelihood`, `predicted likelihood`, col = county, text = station)
+  ) +
+    geom_point() +
+    geom_abline() +
+    scale_colour_manual(values = county_pal) +
+    ggtitle(paste0("R2 = ", gof2$r2, "; rmse = ", gof2$rmse)) 
+  
+  ggplotly(p2, tooltip = "text")
+}
+```
+
+### Table 3
+```{r}
+n_per_cell %>% 
+  as.data.frame() %>% 
+  select(-geometry) %>% 
+  datatable(options = dt_options, rownames = FALSE)
+```
+:::
+
+# APPENDIX A: Overlapping Stations
+
+`r nrow(costras_overlap)` stations overlap with land at a cost layer resolution of `r res(costras)[1]` m.
+
+```{r}
+costras_overlap %>%
+  dplyr::select(county, waterbody, station) %>% 
+  datatable(options = dt_options, rownames = FALSE)
+```
+
+# APPENDIX B: Total Weight
+
+The Total Weight layer is the sum of the "distance" (cost) from each station to every cell: $$\sum{\frac{1}{d_i^p}}$$
+
+```{r}
+#| fig-height: 7
+#| warning: false
+
+crs(rstack_dist_sum) <- st_crs(costras)$wkt
+
+weight_pal <- colorNumeric(
+  palette = "Spectral", domain = values(rstack_dist_sum), na.color = "transparent")
+
+leaflet(dat) %>%
+  addProviderTiles(providers$CartoDB.Positron) %>%
+  addRasterImage(
+    costras, colors = cost_pal, 
+    opacity = 0.75, method = "ngb",
+    group = "Cost Layer"
+  ) %>%
+  addRasterImage(
+    rstack_dist_sum, colors = weight_pal, 
+    opacity = 0.75, method = "ngb",
+    group = "Total Weight"
+  ) %>% 
+  addCircleMarkers(
+    dat = training, 
+    lng = ~longitude, lat = ~latitude, label = ~station2,
+    fillColor = ~heat_stress_pal(likelihood),
+    weight = 1, color = "black", fillOpacity = 0.75, radius = 5,
+    group = "Training"
+  ) %>% 
+  addCircleMarkers(
+    dat = test, 
+    lng = ~longitude, lat = ~latitude, label = ~station2,
+    fillColor = ~heat_stress_pal(likelihood),
+    weight = 1, color = "black", fillOpacity = 0.75, radius = 5,
+    group = "Test"
+  ) %>% 
+  addLayersControl(
+    overlayGroups = c(
+      "Cost Layer", 
+      "Training", 
+      "Test", 
+      "Total Weight"
+    ),
+    options = layersControlOptions(collapsed = FALSE),
+    position = "bottomleft"
+  ) %>% 
+   addLegend(
+    pal = cost_pal,
+    values = c(1, 10000),
+    title = "Cost",
+    group = "Cost Layer",
+    opacity = 0.75
+  ) %>%
+  addLegend(
+    pal = heat_stress_pal,
+    values = ~c(0, 1),
+    title = "Likelihood",
+    group = "Stations",
+    opacity = 0.75
+  ) %>% 
+  addLegend(
+    pal = weight_pal,
+    values = ~values(rstack_dist_sum),
+    title = "Total Weight",
+    group = "Total Weight",
+    opacity = 0.75
+  ) 
+```
+
+
+# APPENDIX C: Station Contribution Layers
+
+The contribution of each station to every cell: 
+$$\frac{v_i \frac{1}{d_i^p}} {\sum_{i=1}^n \frac{1}{d_i^p}}$$ 
+
+```{r}
+#| results: asis
+#| fig-height: 7
+#| message: false
+
+na_stations <- NULL
+numeric_stations <- c(
+  "1", "28", "193", "622", "667", "1012", "1042", 
+  "1199", "1307", "1330","5005", "5006", "5007", "5008")
+
+# for each layer
+for (i in 1:dim(rstack_dist)[3]) {
+  
+  training_i <- training[i, ]
+  
+  station_i <- training_i$station
+  
+  # station_i <- "Great Bras d'Or Channel NE-W"
+  # 
+  # if(station_i == "1307") {
+  #   ras_station_i <- "X1307"
+  # } else if (station_i == "1012") {
+  #   ras_station_i <- "X1012"
+  # } else {
+  #   ras_station_i <- station_i
+  #   ras_station_i <- gsub(pattern = " ", ".", ras_station_i)
+  #   ras_station_i <- gsub(pattern = "-", ".", ras_station_i)
+  #   ras_station_i <- gsub(pattern = "'", ".", ras_station_i)
+  # }
+  
+    if(station_i %in% numeric_stations) {
+    ras_station_i <- paste0("X", station_i)
+  } else{
+    ras_station_i <- station_i
+    ras_station_i <- gsub(pattern = " ", ".", ras_station_i)
+    ras_station_i <- gsub(pattern = "-", ".", ras_station_i)
+    ras_station_i <- gsub(pattern = "'", ".", ras_station_i)
+  }
+  
+  # calculate weight from station to each cell
+  # this is \frac{\frac{1}{d_i^p}} {\sum_{i=1}^n \frac{1}{d_i^p}}
+  ras_weight <- rstack_dist[[ras_station_i]]
+  ras_weight <- ras_weight ^ dist_power / rstack_dist_sum
+  
+  param_value <- data.frame(training[i, paramlist])
+  param_value <- as.vector(unlist(param_value[1]))
+
+  # get the contribution of station i to every cell
+  ras_contribution <- ras_weight * param_value
+  ras_contribution@srs <- costras@srs # make sure this is correct
+
+  # record station if all values are na
+  if(all(is.na(unique(ras_contribution@data@values)))) {
+    na_stations <- rbind(
+      na_stations,
+      data.frame(
+        county = training[i,]$county,
+        station = training[i,]$station)
+    )
+  }
+
+  cat('\n##', station_i, '\n')
+
+  m <- leaflet(dat) %>%
+    addProviderTiles(providers$CartoDB.Positron) %>%
+    addRasterImage(
+      costras, colors = cost_pal, 
+      opacity = 0.25, method = "ngb",
+      group = "Cost Layer"
+    ) %>%
+    addRasterImage(
+      ras_contribution, colors = heat_stress_pal,
+      opacity = 0.75, method = "ngb",
+      group = "Station Contribution"
+    ) %>%
+    addCircleMarkers(
+      dat = training_i,
+      lng = ~longitude, lat = ~latitude, label = ~station2,
+      fillColor = ~heat_stress_pal(likelihood),
+      weight = 1, color = "black", fillOpacity = 0.75, radius = 5,
+      group = "Station"
+    ) %>%
+    addLayersControl(
+      overlayGroups = c(
+        "Cost Layer", 
+        "Station", 
+        "Station Contribution"
+      ),
+      options = layersControlOptions(collapsed = FALSE),
+      position = "bottomleft"
+    ) %>% 
+    addLegend(
+      pal = heat_stress_pal,
+      values = c(0, 1),
+      title = "Likelihood",
+      group = "Stations",
+      opacity = 0.75
+    ) %>% 
+    addLegend(
+      pal = cost_pal,
+      values = ~c(1, 10000),
+      title = "Cost",
+      group = "Cost Layer",
+      opacity = 0.75
+    ) 
+  
+  subchunkify(m, fig_height = 7, fig_width = 8.5)
+  
+}
+
+```
+
+
+```{r}
+# check that the stations that overlap with costras (and only the stations 
+# that overlap with costras) contribute NA to every cell
+
+if (!is.null(na_stations)) {
+  check1 <- na_stations %>% 
+    anti_join(
+      training %>% 
+        filter(station %in% costras_overlap$station) %>%  
+        select(county, station), 
+      by = join_by(county, station)) 
+  
+  if(nrow(check1) !=0) {
+    warning("unexpected contribution from station(s) that overlap with costras")
+  }
+  
+  check2 <- training %>% 
+    filter(station %in% costras_overlap$station) %>% 
+    select(county, station) %>% 
+    anti_join(na_stations, by = join_by(county, station)) 
+  
+  if(nrow(check1) !=0 | nrow(check2) != 0) {
+    warning("unexpected contribution from station(s) that overlap with costras")
+  }
+  
+  na_stations %>% 
+    datatable(options = dt_options, rownames = FALSE)
+  
+}
+```
+

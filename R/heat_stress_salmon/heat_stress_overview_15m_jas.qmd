@@ -1,0 +1,808 @@
+---
+format: 
+  html:
+    toc: true
+    toc-depth: 3
+    embed-resources: true
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, dpi = 600, fig.width = 8)
+
+library(dplyr)
+library(DT)
+library(here)
+library(ggplot2)
+library(leaflet)
+library(lubridate)
+library(plotly)
+library(RColorBrewer)
+library(readr)
+library(sensorstrings)
+library(tgc)
+library(tidyr)
+library(viridis)
+
+source(here("functions/subchunkify.R"))
+source(here("functions/map_stations_by_years_data.R"))
+source(here("functions/merge_stations.R"))
+
+standard_depth <- 15
+high_temperature <- 18
+
+theme_set(theme_light())
+
+dt_options <- list(
+  dom = 'Bft',
+  paging = FALSE,
+  searching = TRUE,
+  scrollY = "500px",
+  scrollX = "500px",
+  columnDefs = list(list(className = 'dt-center', targets = "_all"))
+)
+
+st_locations <- read_csv(
+  here("data/2024-03-14_station_locations.csv"), show_col_types = FALSE
+)  %>% 
+  filter(!(station %in% c("Piper Lake", "Hourglass Lake", "Sissiboo"))) %>% 
+  merge_stations() %>% 
+  distinct(county, station, .keep_all = TRUE)
+
+dat <- readRDS(here("data/2023_cmp_temperature_standard_depths.rds")) %>% 
+  dplyr::filter(sensor_depth_at_low_tide_m == standard_depth) %>%
+  mutate(
+    heat_stress = temperature_degree_c >= high_temperature,
+    year_utc = year(timestamp_utc), 
+    month_utc = month(timestamp_utc)
+  ) 
+
+# heat stress events for unfiltered (e.g., not time-standardized) data
+prelim_heat_stress <- readRDS(
+  here("data/heat_stress_events_18deg_24hrs_not_filtered_standard_depths.rds")) %>% 
+   dplyr::filter(sensor_depth_at_low_tide_m == standard_depth) 
+
+year_pal <- viridis(length(unique(dat$year_utc)), option = "C")
+
+heat_stress_pal <- colorNumeric(
+  palette = brewer.pal(9, "Reds"),
+  domain = c(0, 1)
+)
+
+# red rectangle for figures
+hs_threshold <- annotate(
+  "rect",
+  xmin = as_datetime(-Inf), xmax = as_datetime(Inf),
+  ymin = high_temperature,  ymax = Inf, 
+  fill = "#FB9A99", alpha = 0.25
+)
+
+```
+
+# SALMON HEAT STRESS TEMPERATURE OVERVIEW: `r standard_depth` m
+
+`r Sys.Date()`
+
+- Data submitted to the Open Data Portal in March 2024.
+- Automated and human in the loop quality control applied.
+  - Observations flagged [Fail]{style="color: #DB4325;"} were excluded from the analysis.
+- Fresh water stations not considered.
+  - Piper Lake, Hourglass Lake, and Sissiboo
+- Only considering depths of `r standard_depth` m (some depths were rounded or modified to make consistent data series).
+- Re-named stations were merged into the same station.
+- High temperatures are any observation >= `r high_temperature` degrees C.
+- Heat stress occurs for 24 hours after any observation >= `r high_temperature` degrees C.
+
+# Methods
+
+1. Identify "potential heat stress months", i.e., the month(s) when high temperatures are typically observed.
+2. Filter in data from the potential heat stress months.
+3. Review excluded data series.
+4. Review data gaps.
+5. Export filtered data and heat stress events.
+
+# Analysis
+
+## 1. Potential Heat Stress Months
+
+### High Temperatures
+
+Identify the month(s) when high temperatures are typically observed.
+
+::: panel-tabset
+
+### Figure 1
+```{r}
+#| fig-height: 6
+#| fig-cap: Number of high temperature observations each month.
+
+p <- dat %>% 
+  filter(heat_stress == TRUE) %>% 
+  mutate(year_utc = factor(year_utc)) %>% 
+  ggplot(aes(month_utc, fill = year_utc)) +
+  geom_histogram(binwidth = 1) +
+  scale_x_continuous(
+    "Month", breaks = seq(1, 12), limits = c(1, 12),
+    labels = month(seq(1, 12), label = TRUE)
+  ) +
+  scale_y_continuous("Count") +
+  scale_fill_manual("Year", values = year_pal)
+
+ggplotly(p)
+```
+
+
+### Table 1
+Number and percent of high temperature observations each month.
+```{r}
+#| tbl-cap: Number and percent of high temperature observations each month.
+dat %>% 
+  filter(heat_stress == TRUE) %>% 
+  group_by(month_utc) %>% 
+  summarise(n = n()) %>% 
+  ungroup() %>% 
+  mutate(
+    month = month(month_utc, label = TRUE),
+    n_total = sum(n), 
+    n_percent = round(100 * n / n_total, digits = 2),
+  ) %>% 
+  select(month, n, n_percent) %>% 
+  datatable(options = list(
+    dom = 'Bft',
+    searching = FALSE,
+    paging = FALSE,
+    columnDefs = list(list(className = 'dt-center', targets = "_all")),
+    buttons = c('copy', 'csv')
+  ), rownames = FALSE)
+```
+:::
+
+Most high temperature observations occur in August and September.
+
+### Duration of Heat Stress Events
+
+Identify the month(s) when heat stress is typically observed.
+
+::: panel-tabset
+### Figure 2
+```{r}
+#| fig-height: 6
+#| fig-cap: Duration of heat stress events each month by year.
+#| message: false
+
+p <- prelim_heat_stress %>% 
+  filter(!is.na(month_utc)) %>% 
+  mutate(month_utc = month(month_utc, label = TRUE)) %>% 
+  group_by(month_utc, year_utc) %>% 
+  summarise(event_duration_days = sum(event_duration_days)) %>% 
+  ungroup() %>% 
+  ggplot(aes(month_utc, event_duration_days, fill = year_utc)) +
+  geom_col(color = NA) +
+  scale_y_continuous("Event Duration (days)") +
+  scale_x_discrete("Month") +
+  scale_fill_manual("Year", values = year_pal) 
+
+ggplotly(p) 
+```
+
+### Table 2
+Number and percent of heat stress days each month.
+```{r}
+prelim_heat_stress %>% 
+  filter(!is.na(month_utc)) %>% 
+  group_by(month_utc) %>% 
+  summarise(n = sum(event_duration_days)) %>% 
+  ungroup() %>% 
+  mutate(
+    month = month(month_utc, label = TRUE),
+    n_total = sum(n), 
+    n_percent = round(100 * n / n_total, digits = 2),
+  ) %>% 
+  select(month, n, n_percent) %>% 
+  datatable(options = list(
+    dom = 'Bft',
+    searching = FALSE,
+    paging = FALSE,
+    columnDefs = list(list(className = 'dt-center', targets = "_all"))
+  ), rownames = FALSE)
+```
+:::
+
+Most heat stress occurs in July, August, and September.
+
+## 2. Filter Data
+
+- Filter in data series with observations recorded during the potential heat stress months (Table 3).
+- For each data series, record the minimum and maximum timestamps (Table 3).
+- Keep all data series that begin July 1 and end September 30 (Table 4).
+  - These data series will be checked for data gaps below.
+- Don't automatically keep any data series with heat stress because it's not just presence/absence like superchill - duration matters.
+- Review the excluded data series to see if any can be included (i.e., only missing a few days of data in July or September).
+
+```{r}
+#| message: false
+
+potential_heat_stress_months <- c(7:9)
+
+# min and max month and day for each station and year
+dat_hs_months <- dat %>% 
+  filter(month_utc %in% potential_heat_stress_months) %>% 
+  group_by(county, station, year_utc, sensor_depth_at_low_tide_m) %>% 
+  mutate(
+    min_timestamp_utc = min(timestamp_utc), 
+    max_timestamp_utc = max(timestamp_utc),
+    
+    month_utc_min = month(min_timestamp_utc),
+    day_min = day(min_timestamp_utc),
+    month_utc_max = month(max_timestamp_utc),
+    day_max = day(max_timestamp_utc)
+  ) %>% 
+  ungroup() 
+
+# station-year-depth data series with data in July, August, or September
+table1 <- dat_hs_months %>% 
+  distinct(
+    county, station, year_utc, sensor_depth_at_low_tide_m,
+    min_timestamp_utc, max_timestamp_utc, 
+    month_utc_min, day_min, month_utc_max, day_max 
+  )
+
+# station-year-depth data series with data starting in July and ending in September
+table2 <- dat_hs_months %>% 
+  filter(month_utc_min == 7, day_min == 1, month_utc_max == 9, day_max == 30) %>% 
+  distinct(
+    county, station, year_utc, sensor_depth_at_low_tide_m,
+    min_timestamp_utc, max_timestamp_utc, 
+    month_utc_min, day_min, month_utc_max, day_max
+  )
+
+# data series that may not be included in the analysis
+excluded <- table1 %>%
+  anti_join(
+    table2,
+    by = join_by(
+      county, station, year_utc, 
+      sensor_depth_at_low_tide_m,
+      min_timestamp_utc, max_timestamp_utc, 
+      month_utc_min, day_min, month_utc_max, day_max)
+  )
+
+# consider data series that are missing few days at beginning of July or end of Sept 
+consider <- excluded %>% 
+  mutate(
+    time_span_days = difftime(max_timestamp_utc, min_timestamp_utc, units = "days"),
+    time_span_days = round(unclass(time_span_days))
+  ) %>% 
+  filter(month_utc_min == 7, month_utc_max == 9, time_span_days >= 75) %>% 
+  select(
+    -c(min_timestamp_utc, max_timestamp_utc, month_utc_min, month_utc_max)
+  )
+
+
+dat_hs_months <- dat_hs_months %>% 
+  select(
+    county, station, timestamp_utc, year_utc, month_utc,
+    sensor_type, sensor_serial_number,
+    sensor_depth_at_low_tide_m, temperature_degree_c
+  ) 
+
+```
+
+::: panel-tabset 
+
+### Table 3
+
+`r nrow(table1)` data series with observations in July, August, and/or September.
+
+```{r}
+#| message: false
+table1 %>% 
+  mutate(
+    min_timestamp_utc = as.character(min_timestamp_utc), 
+    max_timestamp_utc = as.character(max_timestamp_utc)
+  ) %>% 
+  arrange(county, station, year_utc) %>% 
+  select(-sensor_depth_at_low_tide_m) %>% 
+  datatable(options = dt_options, rownames = FALSE)
+```
+
+### Table 4
+
+`r nrow(table2)` data series with observations beginning July 1 and ending September 30.
+```{r}
+#| message: false
+table2 %>% 
+  mutate(
+    min_timestamp_utc = as.character(min_timestamp_utc), 
+    max_timestamp_utc = as.character(max_timestamp_utc)
+  ) %>%
+  arrange(county, station, year_utc) %>% 
+  select(-sensor_depth_at_low_tide_m) %>% 
+  datatable(options = dt_options, rownames = FALSE)
+```
+
+### Table 5
+
+`r nrow(excluded)` data series do not include data for the beginning of July and end of September.
+```{r}
+#| message: false
+excluded %>%
+  mutate(
+    min_timestamp_utc = as_date(min_timestamp_utc),
+    max_timestamp_utc = as_date(max_timestamp_utc)
+  ) %>%
+  arrange(county, station, year_utc) %>% 
+  select(-sensor_depth_at_low_tide_m) %>% 
+  datatable(options = dt_options, rownames = FALSE)
+```
+
+### Table 6
+
+`r nrow(consider)` data series from Table 5 have at least 75 days of data, with partial data in July or September. Consider including these in the analysis.
+```{r}
+#| message: false
+consider %>% 
+  select(-sensor_depth_at_low_tide_m) %>% 
+  datatable(options = dt_options, rownames = FALSE)
+```
+:::
+
+## 3. Review Excluded Data Series
+
+### 3.1 Consider Keeping
+
+- Data series missing observations at the beginning of July and end of September, with a time span of at least 75 days (Table 6).
+
+```{r}
+#| results: "asis"
+#| message: false
+#| label: stations-consider
+
+stations_consider <- consider %>% 
+  distinct(station, year_utc)
+
+k <- "stations_consider"
+
+for(i in seq_along(1:nrow(stations_consider))){
+
+  station_i <- stations_consider[i, ]$station
+  year_i <- stations_consider[i, ]$year_utc
+
+  dat_i <- dat_hs_months %>%
+    filter(station == station_i & year_utc == year_i)
+
+  cat('\n####', paste(station_i, "-", year_i, '\n'))
+
+  p <- ss_ggplot_variables(dat_i) +
+    scale_y_continuous("", limits = c(0, 33)) +
+    scale_x_datetime(
+      limits = c(as_datetime(paste(year_i, "-07-01")),
+                 as_datetime(paste(year_i, "-10-01")))
+    ) +
+    hs_threshold
+  
+   subchunkify(p, fig_height = 2, fig_width = 8.5, fig_i = paste(k, i, sep = "-"))
+}
+```
+
+### 3.2 Data Series to Keep
+
+- Time span of at least 75 days[^1].
+- Mean temperature in July/September is < 15 degrees C.
+
+[^1]: 92 days from July through September
+
+#### Table 7
+
+Stations with partial data in July or September that may still be included in the analysis.
+
+```{r}
+#| message: false
+
+to_keep1 <- dat_hs_months %>% 
+  inner_join(
+    select(consider, -c(day_min, day_max)),
+    by = join_by(county, station, year_utc, sensor_depth_at_low_tide_m)
+  ) %>% 
+  filter(time_span_days >= 75, month_utc %in% c(7, 9)) %>% 
+  group_by(county, station, sensor_depth_at_low_tide_m, year_utc, month_utc) %>% 
+  mutate(
+    min_day_group = day(min(timestamp_utc)), # min day in July or Sept
+    max_day_group = day(max(timestamp_utc))  # max day in July or Sept
+  ) %>% 
+  filter(
+    !(month_utc == 7 & min_day_group == 1), # exclude series with data on July 1
+    !(month_utc == 9 & max_day_group == 30) # exclude series with data on Sept 30
+  ) %>% 
+  summarise(
+    mean_temperature = round(mean(temperature_degree_c), digits = 2),
+    max_temperature = max(temperature_degree_c)
+  ) %>% 
+  ungroup() %>% 
+  filter(mean_temperature < 15)
+
+to_keep1 %>% 
+  rename(depth_m = sensor_depth_at_low_tide_m) %>% 
+  datatable(options = dt_options, rownames = FALSE)
+```
+
+### 3.3 Exclude
+
+```{r}
+#| results: "asis"
+#| message: false
+#| label: stations-exclude
+
+stations_exclude <- excluded %>%
+  anti_join(
+    consider, by = join_by(county, station, year_utc, day_min, day_max)
+  ) %>%
+  distinct(station, year_utc)
+
+k <- "stations_exclude"
+
+for(i in seq_along(1:nrow(stations_exclude))) {
+
+  station_i <- stations_exclude[i, ]$station
+  year_i <- stations_exclude[i, ]$year_utc
+
+  dat_i <- dat_hs_months %>%
+    filter(station == station_i & year_utc == year_i)
+
+  cat('\n####', paste(station_i, "-", year_i, '\n'))
+
+  p <- ss_ggplot_variables(dat_i) +
+    scale_y_continuous("", limits = c(0, 33)) +
+    scale_x_datetime(
+      limits = c(as_datetime(paste(year_i, "-07-01")),
+                 as_datetime(paste(year_i, "-10-01")))
+    ) +
+    hs_threshold
+
+  subchunkify(p, fig_height = 2, fig_width = 8.5, fig_i = paste(k, i, sep = "-"))
+}
+```
+
+## 4. Data Gaps
+
+Review data series to see if the data gaps would prevent heat stress from being identified for a given data series. 
+
+### Table 8
+
+Data series with data gaps. 
+```{r}
+#| message: false
+#| warning: false
+
+# all data series to include in analysis
+to_keep <- to_keep1 %>% 
+  select(county, station, sensor_depth_at_low_tide_m, year_utc) %>% 
+  full_join(
+    select(table2, county, station, sensor_depth_at_low_tide_m, year_utc),
+    by = join_by(county, station, sensor_depth_at_low_tide_m, year_utc)
+  ) 
+
+# all data to include in analysis
+dat_hs <- dat_hs_months %>%
+  inner_join(
+    to_keep, by = join_by(county, station, sensor_depth_at_low_tide_m, year_utc)
+  ) %>% 
+  select(
+    county, station, timestamp_utc, year_utc,
+    sensor_type, sensor_serial_number,
+    sensor_depth_at_low_tide_m, temperature_degree_c
+  ) 
+
+gap_summary <- dat_hs %>% 
+  rename(DEPTH = sensor_depth_at_low_tide_m, TIMESTAMP = timestamp_utc) %>%
+  check_for_data_gaps(county, station, year_utc) %>% 
+  rename(
+    sensor_depth_at_low_tide_m = DEPTH,
+    gap_start = GAP_START,
+    gap_length_days = GAP_LENGTH_DAYS, 
+    gap_length_hours = GAP_LENGTH_HOURS
+  ) %>%  
+  filter(gap_length_hours > 0) 
+
+gap_summary %>% 
+  mutate(gap_start = as.character(gap_start)) %>% 
+  select(-gap_length_hours) %>% 
+  rename(depth_m = sensor_depth_at_low_tide_m) %>% 
+  datatable(options = dt_options, rownames = FALSE)
+```
+</br>
+
+Review data gaps > 0.5 days.
+
+```{r}
+#| results: "asis"
+#| message: false
+#| label: stations-gaps
+
+stations_gap <- gap_summary %>%
+  filter(gap_length_days > 0.5) %>% 
+  distinct(station, year_utc)
+
+k <- "stations_gap"
+
+for(i in seq_along(1:nrow(stations_gap))) {
+  
+  station_i <- stations_gap[i, ]$station
+  year_i <- stations_gap[i, ]$year_utc
+  
+  dat_i <- dat_hs %>%
+    filter(station == station_i & year_utc == year_i) 
+  
+  cat('\n###', paste(station_i, "-", year_i, '\n'))
+  
+  gap_start <- filter(gap_summary, 
+                      station == station_i, year_utc == year_i)$gap_start
+  
+  p <- ss_ggplot_variables(dat_i) +
+    geom_vline(xintercept = gap_start) +
+    scale_y_continuous("", limits = c(0, 33)) +
+    hs_threshold
+  
+  subchunkify(p, fig_height = 2, fig_width = 8.5, fig_i = paste(k, i, sep = "-"))
+}
+```
+
+### Table 9 
+
+- Data series to remove due to data gaps (> 24 days).
+- Data series with gaps < 24 days were reviewed to determine it was unlikely heat stress occurred during the gaps.
+
+```{r}
+
+exclude_gaps <- gap_summary %>% 
+  filter(gap_length_days > 24) %>% 
+  select(-c(gap_start, gap_length_hours))
+
+exclude_gaps %>%
+  rename(depth_m = sensor_depth_at_low_tide_m) %>% 
+  datatable(options = dt_options, rownames = FALSE)
+```
+
+# 5. Number of Years
+
+Count the number of years of potential heat stress for each station.
+
+```{r}
+# final standardized dataset
+dat_hs <- dat_hs %>% 
+  anti_join(
+    exclude_gaps,
+    by = join_by(county, station, year_utc, sensor_depth_at_low_tide_m)
+  ) 
+
+# all of the data series in dat_out - not all have heat stress
+data_series <- dat_hs %>%
+  distinct(county, station, year_utc, sensor_depth_at_low_tide_m)
+
+# number of years of data for each station
+n_year <- data_series %>% 
+  group_by(county, station) %>% 
+  summarise(n_year = length(unique(year_utc))) %>% 
+  ungroup()
+
+st_map_year <- st_locations  %>% 
+  left_join(n_year, by = c("county", "station")) %>% 
+  mutate(
+    n_year = if_else(is.na(n_year), 0, as.numeric(n_year)),
+    station = paste(station, n_year, sep = ": ")
+  )
+```
+
+`r nrow(data_series)` data series to include in analysis.
+
+::: panel-tabset
+
+### Figure 3
+
+```{r}
+#| message: false
+#| fig-height: 6
+
+n_year_pal <- colorFactor(
+  palette = c("grey60", year_pal),
+  domain = sort(unique(st_map_year$n_year))
+)
+
+leaflet(st_map_year) %>%
+  addProviderTiles(providers$CartoDB.Positron) %>%
+  add_circle_markers(
+    dat = filter(st_map_year, n_year == 0), 
+    fill_col = ~n_year_pal(n_year), group = "0"
+  ) %>% 
+  add_circle_markers(
+    dat = filter(st_map_year, n_year == 1), 
+    fill_col = ~n_year_pal(n_year), group = "1"
+  ) %>% 
+  add_circle_markers(
+    dat = filter(st_map_year, n_year == 2), 
+    fill_col = ~n_year_pal(n_year), group = "2"
+  ) %>% 
+  add_circle_markers(
+    dat = filter(st_map_year, n_year == 3), 
+    fill_col = ~n_year_pal(n_year), group = "3"
+  ) %>% 
+  add_circle_markers(
+    dat = filter(st_map_year, n_year == 4), 
+    fill_col = ~n_year_pal(n_year), group = "4"
+  ) %>% 
+  add_circle_markers(
+    dat = filter(st_map_year, n_year == 5), 
+    fill_col = ~n_year_pal(n_year), group = "5"
+  ) %>% 
+  add_circle_markers(
+    dat = filter(st_map_year, n_year == 6), 
+    fill_col = ~n_year_pal(n_year), group = "6"
+  ) %>% 
+  addLegend(
+    title = "# Years",
+    pal = n_year_pal, values = sort(unique(st_map_year$n_year)),
+    position = "topright", opacity = 0.75
+  ) %>%
+  addLayersControl(
+    baseGroups = "# Years",
+    overlayGroups = c("0", "1", "2", "3", "4", "5", "6"),
+    options = layersControlOptions(collapsed = FALSE),
+    position = "bottomright"
+  ) %>% 
+  addScaleBar(
+    position = "bottomleft", 
+    options = scaleBarOptions(imperial = FALSE)
+  )
+
+```
+
+### Table 10
+The number and percent of stations with potential heat stress data for 1 - 6 years.
+
+```{r}
+#| message: false
+
+n_year %>% 
+  group_by(n_year) %>% 
+  summarise(n = n()) %>% 
+  mutate(
+    n_total = sum(n),
+    n_percent = round(100 * n / n_total, digits = 1)
+  )  %>% 
+  select(n_year, n, n_percent) %>% 
+  datatable(
+    options = list(
+      dom = 'Bft',
+      searching = FALSE,
+      paging = FALSE,
+      columnDefs = list(list(className = 'dt-center', targets = "_all"))), rownames = FALSE)
+```
+
+:::
+
+# 6. Calculate Heat Stress Likelihood
+
+`likelihood = Heat Stress Duration / (Number of Days in Potential Heat Stress Months) * Number of Years of Data`
+
+```{r}
+#| message: false
+
+# heat stress events = obs > 18 degrees + 24 hours
+heat_stress_events <- dat_hs %>%
+  rename(
+    TIMESTAMP = timestamp_utc,
+    DEPTH = sensor_depth_at_low_tide_m,
+    VALUE = temperature_degree_c
+  ) %>%
+  identify_heat_stress_events(county, station) %>%
+  rename(sensor_depth_at_low_tide_m = DEPTH) %>%
+  mutate(
+    year_utc = year(stress_start),
+    month_utc = month(stress_start),
+    event_duration_days = difftime(stress_end, stress_start, units = "days"),
+    event_duration_days = round(unclass(event_duration_days), digits = 2)
+  )
+
+# number of days in the heat stress season
+min_month <- min(heat_stress_events$month_utc, na.rm = TRUE)
+max_month <- max(heat_stress_events$month_utc, na.rm = TRUE)
+n_days <- 0
+
+for (d in min_month:max_month) n_days <- n_days + days_in_month(d)
+attr(n_days, "names") <- NULL
+
+heat_stress_likelihood <- heat_stress_events %>%
+  # add in data series with no heat stress
+  full_join(
+    data_series,
+    by = join_by(county, station, year_utc, sensor_depth_at_low_tide_m)
+  ) %>%
+  mutate(
+    event_duration_days = if_else(
+      is.na(event_id) & is.na(event_duration_days), 0, event_duration_days)
+  ) %>%
+  # get total number of heat stress days
+  group_by(county, station, sensor_depth_at_low_tide_m) %>% 
+  summarise(
+    n_heat_stress_days = sum(event_duration_days),
+    n_year = length(unique(year_utc))
+  ) %>% 
+  # calculate likelihood
+  mutate(
+    likelihood = round(n_heat_stress_days / (n_year * n_days), digits = 2)
+  ) %>% 
+  left_join(st_locations, by = c("county", "station")) 
+  
+write_csv(
+  heat_stress_likelihood,
+  here(paste0(
+    "output/hs_likelihood_",
+    standard_depth, "_",
+    high_temperature,
+    "_24_jas.csv"))
+)
+```
+
+::: panel-tabset
+
+### Figure 4
+```{r}
+#| fig-height: 6
+#| message: false
+
+heat_stress_likelihood <- heat_stress_likelihood %>% 
+    mutate(
+      station2 = station,
+      station = paste(station2, likelihood, sep = ": "))
+
+leaflet(heat_stress_likelihood) %>%
+  addProviderTiles(providers$CartoDB.Positron) %>%
+  add_circle_markers(
+    dat = filter(heat_stress_likelihood, n_year == 1), 
+    fill_col = ~heat_stress_pal(likelihood), group = "1"
+  ) %>% 
+  add_circle_markers(
+    dat = filter(heat_stress_likelihood, n_year == 2), 
+    fill_col = ~heat_stress_pal(likelihood), group = "2"
+  ) %>% 
+  add_circle_markers(
+    dat = filter(heat_stress_likelihood, n_year == 3), 
+    fill_col = ~heat_stress_pal(likelihood), group = "3"
+  ) %>% 
+  add_circle_markers(
+    dat = filter(heat_stress_likelihood, n_year == 4), 
+    fill_col = ~heat_stress_pal(likelihood), group = "4"
+  ) %>% 
+  add_circle_markers(
+    dat = filter(heat_stress_likelihood, n_year >= 5), 
+    fill_col = ~heat_stress_pal(likelihood), group = "5+"
+  ) %>% 
+  addLegend(
+    "topright", pal = heat_stress_pal, 
+    values = c(0, 1),
+    title = "Likelihood",
+    opacity = 0.75
+  ) %>% 
+  addLayersControl(
+    baseGroups = "# Years",
+    overlayGroups = c("1", "2", "3", "4", "5+"),
+    options = layersControlOptions(collapsed = FALSE),
+    position = "bottomright"
+  ) %>% 
+  addScaleBar(
+    position = "bottomleft", 
+    options = scaleBarOptions(imperial = FALSE)
+  )
+
+```
+
+### Table 11
+
+```{r}
+heat_stress_likelihood %>% 
+  select(county, station = station2, n_heat_stress_days, n_year, likelihood) %>%
+  datatable(options = dt_options, rownames = FALSE)
+```
+
+:::
