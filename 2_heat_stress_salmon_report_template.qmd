@@ -131,10 +131,10 @@ hs_obs <- readRDS(here("data/2023_cmp_temperature_standard_depths.rds")) %>%
 prelim_heat_stress <- readRDS(
   here("data/heat_stress_events_18deg_24hrs_not_filtered_standard_depths.rds")) 
 
-
 heat_stress_pal <- colorNumeric(
   palette = brewer.pal(9, "Reds"),
-  domain = c(0, 1)
+  domain = c(0, 1),
+  na.color = "transparent"
 )
 
 year_pal <- viridis(length(unique(prelim_heat_stress$year_utc)), option = "C")
@@ -263,6 +263,7 @@ The Coastal Monitoring Program temperature data series cover different time peri
 ```{r}
 #| fig-height: 6
 #| fig-cap: Number of high temperature observations each month.
+#| label: fig-high-temperature
 
 p <- hs_obs %>% 
   mutate(year_utc = factor(year_utc)) %>% 
@@ -281,8 +282,6 @@ ggplotly(p)
 ### Table 2
 Number and percent of high temperature observations each month.
 ```{r}
-#| tbl-cap: Number and percent of high temperature observations each month.
-
 hs_obs %>% 
   group_by(month_utc) %>% 
   summarise(n = n()) %>% 
@@ -326,11 +325,9 @@ p <- prelim_heat_stress %>%
 ggplotly(p) 
 ```
 
-### Table 4
-
+### Table 3
+Number and percent of heat stress days each month.
 ```{r}
-#| tbl-cap: Number and percent of heat stress days each month.
-
 prelim_heat_stress %>% 
   filter(
     !is.na(month_utc),
@@ -414,9 +411,10 @@ To provide adequate coverage around the coast, stations with a minimum of `r min
 
 ### Figure 5
 ```{r}
-#| results: asis
-#| fig-height: 7
+#| fig-height: 6
 #| message: false
+#| label: fig-station-likelihood
+#| fig-cap: Heat stress likelihood at each station. Use the `# Years` panel to view stations with 1 to 5+ years of data.
 
 leaflet(dat) %>%
   addProviderTiles(providers$CartoDB.Positron) %>%
@@ -458,7 +456,8 @@ leaflet(dat) %>%
   )
 ```
 
-### Table 3
+### Table 4
+Number of years of observed heat stress days, number of years of data during the potential heat stress months, and heat stress likelihood for each station at a depth of `r standard_depth` m.
 ```{r}
 dat %>% 
   as.data.frame() %>% 
@@ -565,7 +564,6 @@ rstack_sum <- raster::calc(rstack_dist, fun = function(x) {
 
 # change all 0's to NA (to make underlying shapefile NA)
 rstack_dist_sum <- raster::reclassify(rstack_sum, cbind(0, NA))
-#crs(rstack_dist_sum) <- st_crs(costras)$wkt
 ```
 
 ```{r, ipdw}
@@ -578,7 +576,7 @@ ipdw <- ipdw(
 raster::writeRaster(
   ipdw,
   filename = here(paste0(
-    "output/interpolation/heat_stress_likelihood_",
+    "output/interpolation/heat_stress_salmon_",
     standard_depth, "_",
     min_number_years, "_",
     costras_res, "_",
@@ -640,7 +638,8 @@ To select training and test stations, a grid was laid over the domain of the cos
 - Cost raster resolution[^6]: `r costras_res` m
 - Range factor[^7]: `r range_factor`
 - Power parameter ($p$): `r dist_power`
-- Grid size factor[^5]: `r grid_factor` 
+- Grid size factor[^5]: `r grid_factor`
+- Base grid size (m)[^5]: `r base_grid_m`
 - Training seed[^8]: `r training_seed`
 - Number of training stations: `r n_training$n_training`
 - Number of test stations: `r n_test$n_test`
@@ -665,8 +664,7 @@ cost_pal <- colorFactor(
   na.color = "transparent"
 )
 
-ipdw_r <- ipdw@data
-ipdw@srs <- costras@srs # make sure this is correct
+ipdw@srs <- costras@srs 
 
 grid <- spTransform(grid, CRS("+init=epsg:4326")) 
 
@@ -726,6 +724,10 @@ leaflet(dat) %>%
     title = "Likelihood",
     group = "Stations",
     opacity = 0.75
+  ) %>% 
+  addScaleBar(
+    position = "bottomright", 
+    options = scaleBarOptions(imperial = FALSE)
   ) 
 ```
 
@@ -747,10 +749,17 @@ val <- errorGen(ipdw, test, test$likelihood, plot = FALSE)
 
 val_data <- test %>% 
   cbind(val[[2]]) %>% 
-  rename("observed likelihood" = validation.data,
-          "predicted likelihood" = predicted)
+  rename(
+    "observed likelihood" = validation.data, 
+    "predicted likelihood" = predicted
+  )
  
 gof <- val[[1]]
+
+# export goodness of fit
+gof_out <- cbind(temperature = "heat_stress_salmon", interp_params, n_training, n_test, gof)
+write_csv(gof_out, here("output/interpolation_gof.csv"), append = TRUE)
+
 
 p <- ggplot(
   val_data, 
@@ -764,8 +773,9 @@ p <- ggplot(
 ggplotly(p, tooltip = "text")
 
 ```
-:::
 
+### Table 5
+The number of test stations per grid cell, and the range of likelihood values for each test station in the cell.
 ```{r}
 #| message: false
 
@@ -776,7 +786,13 @@ n_per_cell <- test %>%
     min_likelihood = min(likelihood), 
     max_likelihood = max(likelihood)
   )
+
+n_per_cell %>% 
+  as.data.frame() %>% 
+  select(-geometry) %>% 
+  datatable(options = dt_options, rownames = FALSE)
 ```
+:::
 
 `r if (any(n_per_cell$n_test_stations > 1)) { glue("Note that there are {nrow(n_per_cell %>% filter(n_test_stations > 1))} grid cells with more than one test point (Table 3). For example, there are {max(n_per_cell$n_test_stations)} test stations in one cell in {n_per_cell[which(n_per_cell$n_test_stations == max(n_per_cell$n_test_stations)), ]$county}, with likelihood values ranging from  {n_per_cell[which(n_per_cell$n_test_stations == max(n_per_cell$n_test_stations)), ]$min_likelihood} to {n_per_cell[which(n_per_cell$n_test_stations == max(n_per_cell$n_test_stations)), ]$max_likelihood}. To check how multiple test points per grid cell impacted the validation results, the validation procedure was repeated (@fig-validation2). One test station per grid cell was selected at random to be included in a secondary test data set.")}`
 
@@ -814,13 +830,6 @@ if (any(n_per_cell$n_test_stations > 1)) {
 }
 ```
 
-### Table 3
-```{r}
-n_per_cell %>% 
-  as.data.frame() %>% 
-  select(-geometry) %>% 
-  datatable(options = dt_options, rownames = FALSE)
-```
 :::
 
 # APPENDIX A: Overlapping Stations
@@ -928,20 +937,7 @@ for (i in 1:dim(rstack_dist)[3]) {
   
   station_i <- training_i$station
   
-  # station_i <- "Great Bras d'Or Channel NE-W"
-  # 
-  # if(station_i == "1307") {
-  #   ras_station_i <- "X1307"
-  # } else if (station_i == "1012") {
-  #   ras_station_i <- "X1012"
-  # } else {
-  #   ras_station_i <- station_i
-  #   ras_station_i <- gsub(pattern = " ", ".", ras_station_i)
-  #   ras_station_i <- gsub(pattern = "-", ".", ras_station_i)
-  #   ras_station_i <- gsub(pattern = "'", ".", ras_station_i)
-  # }
-  
-    if(station_i %in% numeric_stations) {
+  if(station_i %in% numeric_stations) {
     ras_station_i <- paste0("X", station_i)
   } else{
     ras_station_i <- station_i

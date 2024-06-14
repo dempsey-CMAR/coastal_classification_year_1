@@ -1,4 +1,4 @@
-# June 6, 2024
+# June 13, 2024
 
 # This script generates an html file with the results of idpw for the
 ## specified parameters
@@ -14,7 +14,7 @@ library(quarto)
 standard_depth = 5
 
 # minimum number of years of data to include station
-min_number_years = 1
+min_number_years = 2
 
 # resolution of the cost raster
 # coarse resolution will run faster, but if too coarse, some stations will
@@ -42,7 +42,7 @@ grid_factor = 1.5
 
 # base size of the grid that the training data will be selected from (in m)
 # reasonable values are xxxx
-base_grid = 5000
+base_grid = 8000
 
 # random value used to set the seed for selecting training stations from each grid cell
 # the default value used in ipdw_select_training_stations is 23634

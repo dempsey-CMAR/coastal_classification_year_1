@@ -214,8 +214,6 @@ ggplotly(p)
 ### Table 1
 Number and percent of superchill observations each month.
 ```{r}
-#| tbl-cap: Number and percent of superchill observations each month.
-
 superchill_obs %>%
   mutate(n = n()) %>%
   group_by(month_utc) %>%
@@ -259,7 +257,7 @@ To provide adequate coverage around the coast, stations with a minimum of `r min
 #| fig-height: 6
 #| message: false
 #| label: fig-station-likelihood
-#| fig-cap: Superchill likelihood at each station. Use the `# Years` panel to view stations with 1 to 7 years of data.
+#| fig-cap: Superchill likelihood at each station. Use the `# Years` panel to view stations with 1 to 5+ years of data.
 
 superchill_pal <- colorNumeric(
   palette = blues9,
@@ -287,7 +285,7 @@ leaflet(dat) %>%
   ) %>% 
   add_circle_markers(
     dat = filter(dat, n_year == 5), 
-    fill_col = ~superchill_pal(likelihood), group = "5"
+    fill_col = ~superchill_pal(likelihood), group = "5+"
   ) %>% 
   addLegend(
     "topright", pal = superchill_pal, values = c(0, 1),
@@ -296,7 +294,7 @@ leaflet(dat) %>%
   ) %>% 
   addLayersControl(
     baseGroups = "# Years",
-    overlayGroups = c("1", "2", "3", "4", "5"),
+    overlayGroups = c("1", "2", "3", "4", "5+"),
     options = layersControlOptions(collapsed = FALSE),
     position = "bottomleft"
   ) %>% 
@@ -308,6 +306,7 @@ leaflet(dat) %>%
 ```
 
 ### Table 2
+Number of years of data for potential superchill months, number of years of observed superchill, and superchill likelihood for each station at a depth of `r standard_depth` m.
 ```{r}
 dat %>% 
   as.data.frame() %>% 
@@ -426,7 +425,7 @@ ipdw <- ipdw(
 raster::writeRaster(
   ipdw,
   filename = here(paste0(
-    "output/interpolation/superchill_likelihood_",
+    "output/interpolation/superchill_",
     standard_depth, "_",
     min_number_years, "_",
     costras_res, "_",
@@ -490,6 +489,7 @@ To select training and test stations, a grid was laid over the domain of the cos
 - Range factor[^7]: `r range_factor`
 - Power parameter ($p$): `r dist_power`
 - Grid size factor[^5]: `r grid_factor` 
+- Base grid size (m)[^5]: `r base_grid_m`
 - Training seed[^8]: `r training_seed`
 - Number of training stations: `r n_training$n_training`
 - Number of test stations: `r n_test$n_test`
@@ -513,8 +513,7 @@ cost_pal <- colorFactor(
   na.color = "transparent"
 )
 
-ipdw_r <- ipdw@data
-ipdw@srs <- costras@srs # make sure this is correct
+ipdw@srs <- costras@srs 
 
 grid <- spTransform(grid, CRS("+init=epsg:4326")) 
 
@@ -600,10 +599,16 @@ val <- errorGen(ipdw, test, test$likelihood, plot = FALSE)
 
 val_data <- test %>% 
   cbind(val[[2]]) %>% 
-  rename("observed likelihood" = validation.data,
-          "predicted likelihood" = predicted)
+  rename(
+    "observed likelihood" = validation.data,
+    "predicted likelihood" = predicted
+  )
  
 gof <- val[[1]]
+
+# export goodness of fit
+gof_out <- cbind(temperature = "superchill", interp_params, n_training, n_test, gof)
+write_csv(gof_out, here("output/interpolation_gof.csv"), append = TRUE)
 
 p <- ggplot(
   val_data, 
@@ -617,8 +622,9 @@ p <- ggplot(
 ggplotly(p, tooltip = "text")
 
 ```
-:::
 
+### Table 3
+The number of test stations per grid cell, and the range of likelihood values for each test station in the cell.
 ```{r}
 #| message: false
 
@@ -629,11 +635,15 @@ n_per_cell <- test %>%
     min_likelihood = min(likelihood), 
     max_likelihood = max(likelihood)
   )
+
+n_per_cell %>% 
+  as.data.frame() %>% 
+  select(-geometry) %>% 
+  datatable(options = dt_options, rownames = FALSE)
 ```
+:::
 
 `r if (any(n_per_cell$n_test_stations > 1)) { glue("Note that there are {nrow(n_per_cell %>% filter(n_test_stations > 1))} grid cells with more than one test point (Table 3). For example, there are {max(n_per_cell$n_test_stations)} test stations in one cell in {n_per_cell[which(n_per_cell$n_test_stations == max(n_per_cell$n_test_stations)), ]$county}, with likelihood values ranging from  {n_per_cell[which(n_per_cell$n_test_stations == max(n_per_cell$n_test_stations)), ]$min_likelihood} to {n_per_cell[which(n_per_cell$n_test_stations == max(n_per_cell$n_test_stations)), ]$max_likelihood}. To check how multiple test points per grid cell impacted the validation results, the validation procedure was repeated (@fig-validation2). One test station per grid cell was selected at random to be included in a secondary test data set.")}`
-
-::: panel-tabset
 
 `r if (any(n_per_cell$n_test_stations > 1)) "### Figure 5"`
 ```{r}
@@ -667,16 +677,6 @@ if (any(n_per_cell$n_test_stations > 1)) {
   ggplotly(p2, tooltip = "text")
 }
 ```
-
-### Table 3
-```{r}
-n_per_cell %>% 
-  as.data.frame() %>% 
-  select(-geometry) %>% 
-  datatable(options = dt_options, rownames = FALSE)
-```
-:::
-
 
 
 # APPENDIX A: Overlapping Stations
