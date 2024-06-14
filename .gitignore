@@ -3,6 +3,10 @@
 .RData
 .Ruserdata
 
+archive/
 data-raw/
+data/merged_counties2
+output/rstack_dist
+output/interpolation
 
 *.html
