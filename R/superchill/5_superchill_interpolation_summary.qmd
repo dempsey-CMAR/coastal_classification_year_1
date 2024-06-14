@@ -1,0 +1,166 @@
+---
+title: ""
+format:
+  html:
+    toc: true
+    toc-depth: 3
+    embed-resources: true
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, dpi = 600, fig.width = 8)
+
+library(dplyr)
+library(DT)
+library(here)
+library(leaflet)
+library(RColorBrewer)
+library(raster)
+library(readr)
+library(sf)
+library(stringr)
+library(tidyr)
+
+source(here("functions/nudge_station_coordinates.R"))
+source(here("functions/subchunkify.R"))
+
+standard_depth <- 5
+min_number_years = 1
+
+dt_options <- list(
+  dom = 'ft',
+  paging = FALSE,
+  searching = FALSE,
+  scrollX = "500px",
+  columnDefs = list(list(className = 'dt-center', targets = "_all"))
+)
+
+crs_prov <- "+proj=utm +zone=20 +ellps=GRS80 +units=m +no_defs"
+
+# stations
+dat <- read_csv(
+  here(paste0("output/sc_likelihood_", standard_depth, ".csv")), 
+  show_col_types = FALSE) %>%
+  nudge_station_coordinates() %>% 
+  st_as_sf(coords = c("longitude", "latitude"), crs = 4617, remove = FALSE) %>% 
+  st_transform(crs = crs_prov) %>% 
+  mutate(
+    geom = as.character(geometry),
+    geom = str_remove(geom, "c\\("),
+    geom = str_remove(geom, "\\)")
+  ) %>% 
+  separate(geom, into = c("east", "north"), sep = ", ") %>% 
+  mutate(station2 = paste(station, likelihood, sep = ": "))
+
+layer_files <- list.files(here("output/interpolation")) %>% 
+  data.frame(file_name = .) %>% 
+  separate(
+    file_name, 
+    into = c(
+      "temperature", NA, "standard_depth", "min_number_years", 
+      "costras_res", "range_factor", "dist_power",
+      "grid_factor",
+      "base_grid",
+      "training_seed",
+      "extension"), sep = "_", remove = FALSE
+  ) %>% 
+  mutate(across(.cols = standard_depth:training_seed, .fns = ~as.numeric(.x))) %>% 
+  filter(temperature == "superchill")
+  
+```
+
+# Superchill Interpolation (`r standard_depth` m)
+
+**`r Sys.Date()`**
+
+```{r}
+#| results: asis
+#| fig-height: 7
+#| message: false
+
+superchill_pal <- colorNumeric(
+  palette = blues9,
+  domain = c(0, 1), 
+  na.color = "transparent"
+)
+
+# for each layer
+for (i in seq_along(1:nrow(layer_files))) {
+
+#for (i in seq_along(1:2)) {
+  
+  file_i <- layer_files$file_name[i]
+  
+  r_i <- raster(here(paste0("output/interpolation/", file_i)))
+  
+  projection(r_i) <- crs_prov
+  
+  cat('\n## Model', i, '\n')
+  
+  cat('\n###', "Parameters", '\n')
+  params <- layer_files %>% 
+    slice(i) %>% 
+    dplyr::select(standard_depth:training_seed) %>% 
+    datatable(options = dt_options, rownames = FALSE)
+  
+  subchunkify(params)
+  
+  
+  cat('\n###', "Map", '\n')
+  m <- leaflet(dat) %>%
+    addProviderTiles(providers$CartoDB.Positron) %>%
+    addRasterImage(
+      r_i, colors = superchill_pal, 
+      opacity = 0.75, method = "ngb",
+      group = "Superchill"
+    ) %>%
+    addCircleMarkers(
+      dat = dat,
+      lng = ~longitude, lat = ~latitude, label = ~station2,
+      fillColor = ~superchill_pal(likelihood),
+      weight = 1, color = "black", fillOpacity = 0.75, radius = 5,
+      group = "Station"
+    ) %>%
+    addLayersControl(
+      overlayGroups = c(
+        "Stations", 
+        "Superchill Layer"
+      ),
+      options = layersControlOptions(collapsed = FALSE),
+      position = "bottomleft"
+    ) %>% 
+    addLegend(
+      pal = superchill_pal,
+      values = c(0, 1),
+      title = "Likelihood",
+      group = "Stations",
+      opacity = 0.75
+    ) %>% 
+    addScaleBar(
+      position = "bottomright", 
+      options = scaleBarOptions(imperial = FALSE)
+    ) 
+  
+  subchunkify(m, fig_height = 7, fig_width = 8.5)
+  
+}
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

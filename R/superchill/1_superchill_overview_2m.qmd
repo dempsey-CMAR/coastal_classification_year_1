@@ -1,0 +1,626 @@
+---
+format: 
+  html:
+    toc: true
+    toc-depth: 3
+    embed-resources: true
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, dpi = 600, fig.width = 8)
+
+library(dplyr)
+library(DT)
+library(here)
+library(ggplot2)
+library(leaflet)
+library(lubridate)
+library(plotly)
+library(readr)
+library(sensorstrings)
+library(tgc)
+library(tidyr)
+library(viridis)
+
+source(here("functions/subchunkify.R"))
+source(here("functions/map_stations_by_years_data.R"))
+source(here("functions/merge_stations.R"))
+
+standard_depth <- 2
+
+theme_set(theme_light())
+
+dt_options <- list(
+  dom = 'Bft',
+  paging = FALSE,
+  searching = TRUE,
+  scrollY = "500px",
+  scrollX = "500px",
+  columnDefs = list(list(className = 'dt-center', targets = "_all")),
+  buttons = c('copy', 'csv')
+)
+
+st_locations <- read_csv(
+  here("data/2024-03-14_station_locations.csv"), show_col_types = FALSE
+)  %>% 
+  filter(!(station %in% c("Piper Lake", "Hourglass Lake", "Sissiboo"))) %>% 
+  merge_stations() %>% 
+  distinct(county, station, .keep_all = TRUE)
+
+dat <- readRDS(here("data/2023_cmp_temperature_standard_depths.rds")) %>% 
+  dplyr::filter(sensor_depth_at_low_tide_m == standard_depth) %>% 
+  mutate(
+    superchill = temperature_degree_c <= -0.7,
+    year_utc = year(timestamp_utc), 
+    month_utc = month(timestamp_utc)
+  ) 
+
+superchill_obs <- dat %>% 
+  filter(superchill == TRUE)
+
+year_pal <- viridis(length(unique(dat$year_utc)), option = "C")
+```
+
+# SUPERCHILL MONTHS: `r standard_depth` m
+
+`r Sys.Date()`
+
+# Data
+
+- Data submitted to the Open Data Portal in March 2024.
+- Automated and human in the loop quality control applied.
+  - Observations flagged [Fail]{style="color: #DB4325;"} were excluded from the analysis.
+- Fresh water stations not considered.
+  - Piper Lake, Hourglass Lake, and Sissiboo
+- Only considering depths of `r standard_depth` m (some depths were rounded or modified to make consistent data series).
+- Re-named stations were merged into the same station.
+- Superchill is any observations <= -0.7 degrees C.
+
+# Methods
+
+1. Identify "potential superchill months", i.e., the month(s) when superchill is typically observed.
+2. Filter in data from the potential superchill months.
+3. Review excluded data series.
+4. Review data gaps.
+5. Review superchill in other months.
+6. Determine the number of years of potential superchill data for each station.
+7. Calculate superchill likelihood for each station.
+
+# Analysis
+
+## 1. Potential Superchill Months
+
+Identify the month(s) when superchill is typically observed.
+
+::: panel-tabset
+
+### Figure 1
+```{r}
+#| fig-height: 6
+#| fig-cap: Number of superchill observations each month.
+
+p <- superchill_obs %>% 
+  mutate(year_utc = factor(year_utc)) %>% 
+  ggplot(aes(month_utc, fill = year_utc)) +
+  geom_histogram(binwidth = 1) +
+  scale_x_continuous(
+    "Month", breaks = seq(1, 12),
+    labels = month(seq(1, 12), label = TRUE)
+  ) +
+  scale_y_continuous("Count") +
+  scale_fill_manual("Year", values = year_pal)
+
+ggplotly(p)
+```
+
+### Table 1
+Number and percent of superchill observations each month.
+```{r}
+#| tbl-cap: Number and percent of superchill observations each month.
+superchill_obs %>% 
+  mutate(n = n()) %>% 
+  group_by(month_utc) %>% 
+  summarise(n = n()) %>% 
+  ungroup() %>% 
+  mutate(
+    month = month(month_utc, label = TRUE),
+    n_total = sum(n), 
+    n_percent = round(100 * n / n_total, digits = 2),
+  ) %>% 
+  select(month, n, n_percent) %>% 
+  datatable(options = list(
+    dom = 'Bft',
+    searching = FALSE,
+    paging = FALSE,
+    columnDefs = list(list(className = 'dt-center', targets = "_all")),
+    buttons = c('copy', 'csv')
+  ), rownames = FALSE)
+```
+:::
+
+Most superchill observations occur in January, February, and March.
+
+## 2. Filter Data
+
+- Filter in data series with observations recorded during the potential superchill months (Table 2).
+- For each data series, record the minimum and maximum timestamps (Table 2).
+- Keep all data series that begin January 1 and end March 31 (Table 3).
+- Keep partial data series **with observed superchill** because it is clear that there was superchill (Table 3).
+- Exclude partial data series without observed superchill, because it is not certain whether there was superchill on the missing days (Table 4).
+
+```{r}
+#| message: false
+
+potential_superchill_months <- c(1, 2, 3)
+
+# min and max month and day for each station and year
+dat_sc_months <- dat %>% 
+  filter(month_utc %in% potential_superchill_months) %>% 
+  group_by(county, station, year_utc) %>% 
+  mutate(
+    superchill_st_year = if_else(any(temperature_degree_c <= -0.7), TRUE, FALSE),
+    min_timestamp_utc = min(timestamp_utc), max_timestamp_utc = max(timestamp_utc),
+    
+    month_utc_min = month(min_timestamp_utc),
+    day_min = day(min_timestamp_utc),
+    month_utc_max = month(max_timestamp_utc),
+    day_max = day(max_timestamp_utc)
+  ) %>% 
+  ungroup() 
+
+# station-year data series with data in January, February, and/or March
+# with and without superchill 
+sc_table1 <- dat_sc_months %>% 
+  distinct(
+    county, station, year_utc, superchill_st_year, 
+    min_timestamp_utc, max_timestamp_utc, month_utc_min, day_min, month_utc_max, day_max 
+  )
+
+# station-year data series with data in January, February, AND March,
+# and station-year data series with data in January, February, OR March AND superchill
+sc_table2 <- dat_sc_months %>% 
+  filter(
+    superchill_st_year == TRUE |
+      (superchill_st_year == FALSE &
+         month_utc_min == 1 & day_min == 1 & month_utc_max == 3 & day_max == 31)
+  ) %>% 
+  distinct(
+    county, station, year_utc, superchill_st_year, 
+    min_timestamp_utc, max_timestamp_utc, month_utc_min, day_min, month_utc_max, day_max 
+  )
+
+# data series that were not included in the analysis
+excluded <- sc_table1 %>%
+  anti_join(
+    sc_table2,
+    by = c("county", "station", "year_utc",
+           "min_timestamp_utc", "max_timestamp_utc", 
+           "month_utc_min", "day_min", "month_utc_max", "day_max")
+  )
+
+# SUPERCHILL DATA TO USE FOR ANALYSIS
+dat_sc <- dat_sc_months %>%
+  inner_join(
+    select(sc_table2, county, station, year_utc),
+    by = c("county", "station", "year_utc")
+  ) %>% 
+  select(
+    county, station, sensor_type, sensor_serial_number, 
+    timestamp_utc, sensor_depth_at_low_tide_m, temperature_degree_c,
+    superchill, year_utc, month_utc
+  )
+
+# saveRDS(dat_sc, here("data/superchill_temperatures_filtered.rds"))
+```
+
+::: panel-tabset 
+
+Review partial data series that were excluded from the analysis.
+
+### Table 2
+
+`r nrow(sc_table1)` data series with observations in January, February, and/or March.
+
+```{r}
+#| message: false
+sc_table1 %>% 
+  select(-superchill_st_year) %>% 
+  mutate(
+    min_timestamp_utc = as.character(min_timestamp_utc), 
+    max_timestamp_utc = as.character(max_timestamp_utc)
+  ) %>% 
+  arrange(county, station, year_utc) %>% 
+  datatable(options = dt_options, rownames = FALSE)
+```
+
+### Table 3
+
+`r nrow(sc_table2)` data series with observations beginning January 1 and ending March 31 OR with observed superchill.
+```{r}
+#| message: false
+
+sc_table2 %>% 
+  mutate(
+    min_timestamp_utc = as.character(min_timestamp_utc), 
+    max_timestamp_utc = as.character(max_timestamp_utc)
+  ) %>%
+  arrange(county, station, year_utc) %>% 
+  datatable(options = dt_options, rownames = FALSE)
+```
+
+### Table 4
+
+`r nrow(excluded)` data series that were filtered out of the analysis because they started after January 1 and/or ended before March 31 and do not include superchill observations.
+```{r}
+#| message: false
+
+excluded %>%
+  mutate(
+    min_timestamp_utc = as_date(min_timestamp_utc),
+    max_timestamp_utc = as_date(max_timestamp_utc)
+  ) %>%
+  arrange(county, station, year_utc) %>% 
+  datatable(options = dt_options, rownames = FALSE)
+```
+:::
+
+## 3. Review Excluded Data Series
+
+```{r}
+#| results: "asis"
+#| message: false
+
+stations <- excluded %>% 
+  distinct(station)
+stations <- stations$station
+
+dat_plot <- dat_sc_months %>% 
+  inner_join(excluded, by = c("county", "station", "year_utc")) %>% 
+  select(
+    station, timestamp_utc, year_utc,
+    sensor_depth_at_low_tide_m, temperature_degree_c
+  ) 
+
+k <- "excluded"
+
+for(i in seq_along(stations)){
+  
+  dat_i <- dat_plot %>%
+    filter(station == stations[i]) 
+  
+  years <- unique(dat_i$year_utc)
+  
+  for(j in seq_along(years)) {
+    
+    cat('\n###', paste(stations[i], "-", years[j], '\n'))
+    
+    dat_j <- dat_i %>%
+      filter(year_utc == years[j]) 
+    
+    p <- ss_ggplot_variables(dat_j) +
+      scale_x_datetime(
+        limits = c(as_datetime(paste(years[j], "-01-01")), 
+                   as_datetime(paste(years[j], "-04-01")))
+      ) 
+    
+    subchunkify(p, fig_height = 2, fig_width = 8.5, 
+                fig_i = paste(k, i, j, sep = "-"))
+  }
+}
+```
+
+
+## 4. Data Gaps
+
+Check if there are any large data gaps (> 2 hours) within the January - March data series.
+
+Review data series to see if the data gaps would prevent superchill from being identified for a given station. 
+
+::: panel-tabset
+### Table 5
+
+Data series with gaps greater than 2 hours. 
+```{r}
+#| message: false
+
+gap_summary <- dat_sc %>% 
+  rename(DEPTH = sensor_depth_at_low_tide_m, TIMESTAMP = timestamp_utc) %>%
+  check_for_data_gaps(county, station, year_utc) %>% 
+  filter(GAP_LENGTH_HOURS > 0) %>% 
+  rename(sensor_depth_at_low_tide_m = DEPTH)
+
+gap_summary %>% 
+  select(-GAP_LENGTH_DAYS) %>% 
+  mutate(GAP_START = as.character(GAP_START)) %>% 
+  datatable(options = dt_options, rownames = FALSE)
+```
+
+```{r}
+#| results: "asis"
+
+stations <- gap_summary %>% 
+  distinct(station)
+stations <- stations$station
+
+dat_gap <- dat_sc %>% 
+  inner_join(
+    gap_summary, 
+    by = join_by(county, station, sensor_depth_at_low_tide_m, year_utc))
+
+for(i in seq_along(stations)){
+  
+  cat('\n###', paste(stations[i], '\n'))
+  
+  gap_start <- filter(gap_summary, station == stations[i])$GAP_START
+  
+  dat_i <- dat_gap %>%
+    filter(station == stations[i]) %>% 
+    ss_convert_depth_to_ordered_factor() %>% 
+    select(timestamp_utc, sensor_depth_at_low_tide_m, temperature_degree_c)
+  
+  p <- ss_ggplot_variables(dat_i, superchill = TRUE) +
+    geom_vline(xintercept = gap_start)
+  
+  subchunkify(p, fig_height = 2.5, fig_width = 8.5)
+}
+```
+:::
+
+- These data gaps are likely all from delays between retrieval and re-deployment.
+- The data gaps will not prevent superchill from being identified.
+
+## 5. Review Superchill in Other Months
+
+Superchill is occasionally observed in months that are not considered potential superchill months (Figure 1). 
+
+Check that for these station-year data series, there is **also** superchill observed in the potential superchill months (i.e., make sure that it still counts as a superchill year). 
+
+::: panel-tabset
+
+### Table 6
+
+Number of superchill observations in January - March for data series that had observed superchill in other months.
+
+```{r}
+#| label: other-months-calcs
+#| message: false
+
+# stations with superchill in other months
+other_sc <- superchill_obs %>% 
+  filter(superchill == TRUE & !(month_utc %in% potential_superchill_months)) %>%
+  distinct(county, station, year_utc)
+
+# number of superchill observations for each station and year 
+n_superchill_obs <- dat_sc %>% 
+  inner_join(other_sc, by = c("county", "station", "year_utc")) %>% 
+  group_by(county, station, year_utc) %>% 
+  summarise(n_superchill = sum(superchill)) %>% 
+  ungroup() 
+
+n_superchill_obs %>% 
+  datatable(options = dt_options, rownames = FALSE)
+```
+
+```{r}
+#| results: "asis"
+#| label: other-months-figs
+
+station_year <- n_superchill_obs  %>% 
+  filter(n_superchill == 0) %>% 
+  distinct(station, year_utc)
+
+for(i in seq_along(station_year$station)){
+  
+  cat('\n###', paste(station_year$station[i], '\n'))
+  
+  dat_i <-  dat %>%
+    filter(
+      station == station_year$station[i], 
+      year_utc == station_year$year_utc[i]
+    )
+  
+  p <- ss_ggplot_variables(dat_i, superchill = TRUE) 
+  
+  subchunkify(p, fig_height = 2.25, fig_width = 8.5)
+}
+```
+:::
+
+- For all data series with superchill observed in "other months", superchill is also observed during the "potential superchill months".
+
+
+## 6. Number of Years
+
+Count the number of years of potential superchill data for each station.
+
+```{r}
+#| message: false
+
+n_year <- dat_sc %>% 
+  group_by(county, station) %>% 
+  summarise(n_year = length(unique(year_utc))) %>% 
+  ungroup()
+
+st_map_year <- st_locations  %>% 
+  left_join(n_year, by = c("county", "station")) %>% 
+  mutate(
+    n_year = if_else(is.na(n_year), 0, as.numeric(n_year)),
+    station = paste(station, n_year, sep = ": ")
+  )
+```
+
+::: panel-tabset
+
+### Figure 3
+```{r}
+#| fig-height: 6
+
+n_year_pal <- colorFactor(
+  palette = c("grey60", year_pal),
+  domain = sort(unique(st_map_year$n_year))
+)
+
+leaflet(st_map_year) %>%
+  addProviderTiles(providers$CartoDB.Positron) %>%
+  add_circle_markers(
+    dat = filter(st_map_year, n_year == 0), 
+    fill_col = ~n_year_pal(n_year), group = "0"
+  ) %>% 
+  add_circle_markers(
+    dat = filter(st_map_year, n_year == 1), 
+    fill_col = ~n_year_pal(n_year), group = "1"
+  ) %>% 
+  add_circle_markers(
+    dat = filter(st_map_year, n_year == 2), 
+    fill_col = ~n_year_pal(n_year), group = "2"
+  ) %>% 
+  add_circle_markers(
+    dat = filter(st_map_year, n_year == 3), 
+    fill_col = ~n_year_pal(n_year), group = "3"
+  ) %>% 
+  add_circle_markers(
+    dat = filter(st_map_year, n_year == 4), 
+    fill_col = ~n_year_pal(n_year), group = "4"
+  ) %>% 
+  add_circle_markers(
+    dat = filter(st_map_year, n_year == 5), 
+    fill_col = ~n_year_pal(n_year), group = "5"
+  ) %>% 
+  addLegend(
+    title = "# Years",
+    pal = n_year_pal, values = sort(unique(st_map_year$n_year)),
+    position = "topright", opacity = 0.75
+  ) %>%
+  addLayersControl(
+    baseGroups = "# Years",
+    overlayGroups = c("0", "1", "2", "3", "4", "5"),
+    options = layersControlOptions(collapsed = FALSE),
+    position = "bottomright"
+  ) %>% 
+  addScaleBar(
+    position = "bottomleft", 
+    options = scaleBarOptions(imperial = FALSE)
+  )
+
+```
+
+### Table 7
+The number and percent of stations with potential superchill data for 1 - 5 years.
+
+```{r}
+#| message: false
+
+n_year %>% 
+  group_by(n_year) %>% 
+  summarise(n = n()) %>% 
+  mutate(
+    n_total = sum(n),
+    n_percent = round(100 * n / n_total, digits = 1)
+  )  %>% 
+  select(n_year, n, n_percent) %>% 
+  datatable(
+    options = list(
+      dom = 'Bft',
+      searching = FALSE,
+      paging = FALSE,
+      columnDefs = list(list(className = 'dt-center', targets = "_all"))), rownames = FALSE)
+```
+
+:::
+
+## 7. Calculate Likelihood
+
+Likelihood of superchill = # years of observed superchill / # years of data
+
+```{r}
+#| message: false
+
+sc_likelihood <- dat_sc %>% 
+  distinct(county, station, year_utc, superchill) %>% 
+  group_by(county, station) %>% 
+  summarise(
+    n_year = length(unique(year_utc)),
+    n_year_superchill = sum(superchill)
+  ) %>% 
+  ungroup() %>% 
+  mutate(likelihood = round(n_year_superchill / n_year, digits = 3))
+
+sc_likelihood <- st_locations %>% 
+  left_join(sc_likelihood, by = c("county", "station")) %>% 
+  filter(!is.na(likelihood)) 
+  
+
+ write_csv(sc_likelihood, here(paste0("output/sc_likelihood_", standard_depth, ".csv")))
+
+```
+
+::: panel-tabset
+
+### Figure 4
+```{r}
+#| fig-height: 6
+#| message: false
+
+superchill_pal <- colorNumeric(
+  palette = blues9,
+  domain = c(0, 1)
+)
+
+sc_likelihood <- sc_likelihood %>% 
+    mutate(station = paste(station, likelihood, sep = ": "))
+
+leaflet(sc_likelihood) %>%
+  addProviderTiles(providers$CartoDB.Positron) %>%
+  add_circle_markers(
+    dat = filter(sc_likelihood, n_year == 1), 
+    fill_col = ~superchill_pal(likelihood), group = "1"
+  ) %>% 
+  add_circle_markers(
+    dat = filter(sc_likelihood, n_year == 2), 
+    fill_col = ~superchill_pal(likelihood), group = "2"
+  ) %>% 
+  add_circle_markers(
+    dat = filter(sc_likelihood, n_year == 3), 
+    fill_col = ~superchill_pal(likelihood), group = "3"
+  ) %>% 
+  add_circle_markers(
+    dat = filter(sc_likelihood, n_year == 4), 
+    fill_col = ~superchill_pal(likelihood), group = "4"
+  ) %>% 
+  add_circle_markers(
+    dat = filter(sc_likelihood, n_year >= 5), 
+    fill_col = ~superchill_pal(likelihood), group = "5+"
+  ) %>% 
+  addLegend(
+    "topright", pal = superchill_pal, 
+    values = c(0, 1),
+    title = "Likelihood",
+    opacity = 0.75
+  ) %>% 
+  addLayersControl(
+    baseGroups = "# Years",
+    overlayGroups = c("1", "2", "3", "4", "5+"),
+    options = layersControlOptions(collapsed = FALSE),
+    position = "bottomright"
+  ) %>% 
+  addScaleBar(
+    position = "bottomleft", 
+    options = scaleBarOptions(imperial = FALSE)
+  )
+
+```
+
+### Table 8
+
+```{r}
+sc_likelihood %>% 
+  datatable(options = dt_options, rownames = FALSE)
+```
+
+:::
+
+
+
+
