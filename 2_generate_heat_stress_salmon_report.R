@@ -33,7 +33,7 @@ range_factor = 50
 # exponent on the distance used to calculate weights
 # larger values mean only closer stations are included in the weighted average
 # typical values are 1 - 2
-dist_power = 1
+dist_power = 2
 
 # factor used to create the grid that the training data is selected from
 # grid size will be grid_factor * base_grid
@@ -42,7 +42,7 @@ grid_factor = 1.5
 
 # base size of the grid that the training data will be selected from (in m)
 # reasonable values are xxxx
-base_grid = 15000
+base_grid = 6000
 
 # random value used to set the seed for selecting training stations from each grid cell
 # the default value used in ipdw_select_training_stations is 23634
