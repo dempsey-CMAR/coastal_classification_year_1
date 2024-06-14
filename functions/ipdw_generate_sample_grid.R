@@ -33,7 +33,6 @@ ipdw_generate_sample_grid <- function(
     point_pattern <- spatstat.geom::ppp(
       st_coordinates(sf)[, 1], st_coordinates(sf)[, 2], window = sample_window
     )
-    
     # mean distance between neighbors
     base_grid <- mean(nndist(point_pattern))
   }

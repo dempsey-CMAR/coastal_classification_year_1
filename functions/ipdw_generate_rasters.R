@@ -26,23 +26,23 @@ ipdw_generate_ns_costras <- function(
     dat = NULL,
     projstr = NULL
 ) {
-
+  
   if(is.null(path)) path <- here("output/costras")
-
+  
   ras_files <- list.files(path, pattern = ".tif")
-
+  
   file_name <- paste0("costras_", costras_res, "m.tif")
-
+  
   if(file_name %in% ras_files) {
     costras <- raster(paste0(path, "/", file_name))
   } else {
-
+    
     costras <- ipdw::costrasterGen(
       dat, costras_sf,
       extent = "polys", projstr = projstr,
       resolution = costras_res
     )
-
+    
     raster::writeRaster(
       costras,
       filename = paste0(path, "/", file_name),
@@ -70,68 +70,56 @@ ipdw_generate_ns_costras <- function(
 
 ipdw_generate_ns_distances <- function(
     path = NULL,
+    standard_depth,
     min_number_years,
     costras_res,
     range_factor,
     dist_power,
     grid_factor,
+    base_grid,
     training_seed,
     mean_neigh_dist_m,
     training = NULL,
-    costras = NULL,
-    standard_depth = NULL
+    costras = NULL
 ) {
-
+  
   if(is.null(path)) path <- here("output/rstack_dist")
-
+  
   ras_files <- list.files(path, pattern = "grd")
-
-  if(is.null(standard_depth)) {
-    file_name <- paste0(
-      "rstack_dist_",
-      min_number_years, "_",
-      costras_res, "_",
-      range_factor, "_",
-      dist_power, "_",
-      grid_factor, "_",
-      training_seed,
-      ".grd"
-    )
-  } else {
-    file_name <- paste0(
-      "rstack_dist_",
-      min_number_years, "_",
-      costras_res, "_",
-      range_factor, "_",
-      dist_power, "_",
-      grid_factor, "_",
-      training_seed, "_",
-      standard_depth,
-      ".grd"
-    )
-  }
-
-
+  
+  file_name <- paste0(
+    "rstack_dist_",
+    standard_depth, "_",
+    min_number_years, "_",
+    costras_res, "_",
+    range_factor, "_",
+    dist_power, "_",
+    grid_factor, "_",
+    base_grid, "_",
+    training_seed,
+    ".grd"
+  )
+  
   if(file_name %in% ras_files) {
     rstack_dist <- raster::stack(paste0(path, "/", file_name))
   } else {
-
+    
     rstack_dist <- ipdw::pathdistGen(
       training, costras,
       range = range_factor * mean_neigh_dist_m,
       progressbar = FALSE
     )
-
+    
     # add the user-specified range to rstack
     range <- slot(rstack_dist, "range")
-
+    
     raster::writeRaster(
       rstack_dist,
       filename = paste0(path, "/", file_name),
       overwrite = TRUE,
       bylayer = FALSE
     )
-
+    
   }
   rstack_dist
 }
