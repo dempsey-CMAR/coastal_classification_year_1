@@ -1,0 +1,17 @@
+﻿temperature,standard_depth,min_number_years,costras_res,range_factor,dist_power,grid_factor,base_grid,training_seed,like_offset,n_training,n_test,r2,rmse,pe,logmse
+heat_stress_salmon,5,2,500,50,1,1.5,6000,55616,FALSE,34,6,0,0.2,202.54,-3.26
+heat_stress_salmon,5,2,500,50,1,1.5,8000,55616,FALSE,34,6,0.15,0.19,335.42,-3.37
+heat_stress_salmon,5,2,500,50,1,1.5,10000,55616,FALSE,30,10,0.8,0.08,96.18,-5.13
+heat_stress_salmon,5,2,500,50,1,1.5,12000,55616,FALSE,30,10,0.14,0.18,146.79,-3.44
+superchill,5,2,500,50,1,1.5,6000,23634,FALSE,41,5,0.06,0.38,230.01,-1.91
+superchill,5,2,500,50,1,1.5,12000,23634,FALSE,36,10,0.14,0.33,331.7,-2.23
+superchill,5,2,500,50,2,1.5,6000,23634,FALSE,41,5,0.06,0.38,230.01,-1.91
+superchill,5,2,500,50,2,1.5,12000,23634,FALSE,36,10,0.14,0.33,331.7,-2.23
+superchill,5,2,500,50,2,1.5,8000,23634,FALSE,40,6,0.24,0.27,81.43,-2.62
+superchill,5,2,500,50,1,1.5,10000,23634,FALSE,37,9,0.27,0.2,145.38,-3.18
+superchill,5,2,500,50,1,1.5,8000,23634,FALSE,40,6,0.24,0.27,81.43,-2.62
+superchill,5,2,500,50,2,1.5,10000,23634,FALSE,37,9,0.27,0.2,145.38,-3.18
+heat_stress_salmon,5,2,500,50,2,1.5,12000,55616,FALSE,30,10,0.14,0.18,146.79,-3.44
+heat_stress_salmon,5,2,500,50,2,1.5,10000,55616,FALSE,30,10,0.8,0.08,96.18,-5.13
+heat_stress_salmon,5,2,500,50,2,1.5,8000,55616,FALSE,34,6,0.15,0.19,335.42,-3.37
+heat_stress_salmon,5,2,500,50,2,1.5,6000,55616,FALSE,34,6,0,0.2,202.54,-3.26
