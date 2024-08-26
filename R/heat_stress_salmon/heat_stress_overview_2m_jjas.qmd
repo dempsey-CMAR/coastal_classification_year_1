@@ -699,7 +699,9 @@ heat_stress_events <- dat_hs %>%
     DEPTH = sensor_depth_at_low_tide_m,
     VALUE = temperature_degree_c
   ) %>%
-  identify_heat_stress_events(county, station) %>%
+  identify_heat_stress_events(
+    county, station, heat_threshold = high_temperature
+  ) %>%
   rename(sensor_depth_at_low_tide_m = DEPTH) %>%
   mutate(
     year_utc = year(stress_start),

@@ -60,8 +60,12 @@ dat <- readRDS(here("data/2023_cmp_temperature_standard_depths.rds")) %>%
 
 # heat stress events for unfiltered (e.g., not time-standardized) data
 prelim_heat_stress <- readRDS(
-  here("data/heat_stress_events_18deg_24hrs_not_filtered_standard_depths.rds")) %>% 
-   dplyr::filter(sensor_depth_at_low_tide_m == standard_depth) 
+  here(
+    paste0("data/heat_stress_events_", 
+           high_temperature,
+           "deg_24hrs_not_filtered_standard_depths.rds"))
+) %>% 
+  dplyr::filter(sensor_depth_at_low_tide_m == standard_depth) 
 
 year_pal <- viridis(length(unique(dat$year_utc)), option = "C")
 
@@ -212,19 +216,28 @@ prelim_heat_stress %>%
 
 Most heat stress occurs in July, August, and September.
 
+- The heat stress events beginning in June start on or after June 25, and most carry into July. 
+- Filtering the data to July through August will only exclude the heat stress days in June. 
+  - There are 79 days of heat stress in St. Andrews Channel E (Cape Breton) beginning in late June in 2017. Most of this heat stress (e.g., 74 of the 79 days) occur in July through September and will  be included in the analysis.
+
 ## 2. Filter Data
 
 - Filter in data series with observations recorded during the potential heat stress months (Table 3).
 - For each data series, record the minimum and maximum timestamps (Table 3).
 - Keep all data series that begin July 1 and end September 30 (Table 4).
   - These data series will be checked for data gaps below.
-- Don't automatically keep any data series with heat stress because it's not just presence/absence like superchill - duration matters.
+- Duration of heat stress is part of the likelihood calculation, and so partial datasets with observed high temperatures cannot automatically be included (unlike the superchill analysis, where presence/absence is used to calculate likelihood).
 - Review the excluded data series to see if any can be included (i.e., only missing a few days of data in July or September).
 
 ```{r}
 #| message: false
 
 potential_heat_stress_months <- c(7:9)
+# minimum number of days of data to consider keeping
+min_days_to_keep <- 75
+# maximum mean temperature to consider keeping
+max_temp_to_keep <- 15
+
 
 # min and max month and day for each station and year
 dat_hs_months <- dat %>% 
@@ -251,7 +264,12 @@ table1 <- dat_hs_months %>%
 
 # station-year-depth data series with data starting in July and ending in September
 table2 <- dat_hs_months %>% 
-  filter(month_utc_min == 7, day_min == 1, month_utc_max == 9, day_max == 30) %>% 
+  filter(
+    month_utc_min == 7, 
+    day_min == 1, 
+    month_utc_max == 9, 
+    day_max == 30
+  ) %>% 
   distinct(
     county, station, year_utc, sensor_depth_at_low_tide_m,
     min_timestamp_utc, max_timestamp_utc, 
@@ -275,7 +293,11 @@ consider <- excluded %>%
     time_span_days = difftime(max_timestamp_utc, min_timestamp_utc, units = "days"),
     time_span_days = round(unclass(time_span_days))
   ) %>% 
-  filter(month_utc_min == 7, month_utc_max == 9, time_span_days >= 75) %>% 
+  filter(
+    month_utc_min == 7, 
+    month_utc_max == 9, 
+    time_span_days >= min_days_to_keep
+  ) %>%
   dplyr::select(
     -c(min_timestamp_utc, max_timestamp_utc, month_utc_min, month_utc_max)
   )
@@ -287,7 +309,6 @@ dat_hs_months <- dat_hs_months %>%
     sensor_type, sensor_serial_number,
     sensor_depth_at_low_tide_m, temperature_degree_c
   ) 
-
 ```
 
 ::: panel-tabset 
@@ -340,7 +361,7 @@ excluded %>%
 
 ### Table 6
 
-`r nrow(consider)` data series from Table 5 have at least 75 days of data, with partial data in July or September. Consider including these in the analysis.
+`r nrow(consider)` data series from Table 5 have at least `r min_days_to_keep` days of data, with partial data in July or September. Consider including these in the analysis.
 ```{r}
 #| message: false
 consider %>% 
@@ -353,7 +374,7 @@ consider %>%
 
 ### 3.1 Consider Keeping
 
-- Data series missing observations at the beginning of July and end of September, with a time span of at least 75 days (Table 6).
+- Data series missing observations at the beginning of July and/or end of September, with a time span of at least `r min_days_to_keep` days (Table 6).
 
 ```{r}
 #| results: "asis"
@@ -389,14 +410,14 @@ for(i in seq_along(1:nrow(stations_consider))){
 
 ### 3.2 Data Series to Keep
 
-- Time span of at least 75 days[^1].
-- Mean temperature in July/September is < 15 degrees C.
+- Time span of at least `r min_days_to_keep` days[^1] (observations for > 80 % of the potential heat stress months).
+- Mean temperature in July/September is < `r max_temp_to_keep` degrees C.
 
 [^1]: 92 days from July through September
 
 #### Table 7
 
-Stations with partial data in July or September that may still be included in the analysis.
+Stations with partial data in July or September that will be included in the analysis.
 
 ```{r}
 #| message: false
@@ -406,7 +427,10 @@ to_keep1 <- dat_hs_months %>%
     dplyr::select(consider, -c(day_min, day_max)),
     by = join_by(county, station, year_utc, sensor_depth_at_low_tide_m)
   ) %>% 
-  filter(time_span_days >= 75, month_utc %in% c(7, 9)) %>% 
+  filter(
+    time_span_days >= min_days_to_keep, 
+    month_utc %in% c(7, 9) # only looking at first and last month
+    ) %>% 
   group_by(county, station, sensor_depth_at_low_tide_m, year_utc, month_utc) %>% 
   mutate(
     min_day_group = day(min(timestamp_utc)), # min day in July or Sept
@@ -421,7 +445,7 @@ to_keep1 <- dat_hs_months %>%
     max_temperature = max(temperature_degree_c)
   ) %>% 
   ungroup() %>% 
-  filter(mean_temperature < 15)
+  filter(mean_temperature < max_temp_to_keep)
 
 to_keep1 %>% 
   rename(depth_m = sensor_depth_at_low_tide_m) %>% 
@@ -684,7 +708,7 @@ n_year %>%
 
 # 6. Calculate Heat Stress Likelihood
 
-`likelihood = Heat Stress Duration / (Number of Days in Potential Heat Stress Months) * Number of Years of Data`
+`likelihood = Heat Stress Duration / (Number of Days in Potential Heat Stress Months * Number of Years of Data)`
 
 ```{r}
 #| message: false
@@ -696,7 +720,10 @@ heat_stress_events <- dat_hs %>%
     DEPTH = sensor_depth_at_low_tide_m,
     VALUE = temperature_degree_c
   ) %>%
-  identify_heat_stress_events(county, station) %>%
+  identify_heat_stress_events(
+    county, station,
+    heat_threshold = high_temperature
+  ) %>%
   rename(sensor_depth_at_low_tide_m = DEPTH) %>%
   mutate(
     year_utc = year(stress_start),
@@ -706,8 +733,8 @@ heat_stress_events <- dat_hs %>%
   )
 
 # number of days in the heat stress season
-min_month <- min(heat_stress_events$month_utc, na.rm = TRUE)
-max_month <- max(heat_stress_events$month_utc, na.rm = TRUE)
+min_month <- first(potential_heat_stress_months)
+max_month <- last(potential_heat_stress_months)
 n_days <- 0
 
 for (d in min_month:max_month) n_days <- n_days + days_in_month(d)
