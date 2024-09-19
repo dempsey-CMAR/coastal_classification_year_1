@@ -6,6 +6,7 @@
 archive/
 data-raw/
 data/merged_counties2
+data/2023_cmp_temperature_standard_depths.rds 
 output/rstack_dist
 output/interpolation
 
