@@ -42,7 +42,7 @@ grid_factor = 1.5
 
 # base size of the grid that the training data will be selected from (in m)
 # reasonable values are xxxx
-base_grid = 8000
+base_grid = 10000
 
 # random value used to set the seed for selecting training stations from each grid cell
 # the default value used in ipdw_select_training_stations is 23634

@@ -159,7 +159,8 @@ dat_sc_months <- dat %>%
   group_by(county, station, year_utc) %>% 
   mutate(
     superchill_st_year = if_else(any(temperature_degree_c <= -0.7), TRUE, FALSE),
-    min_timestamp_utc = min(timestamp_utc), max_timestamp_utc = max(timestamp_utc),
+    min_timestamp_utc = min(timestamp_utc), 
+    max_timestamp_utc = max(timestamp_utc),
     
     month_utc_min = month(min_timestamp_utc),
     day_min = day(min_timestamp_utc),

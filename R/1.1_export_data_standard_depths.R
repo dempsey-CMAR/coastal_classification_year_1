@@ -161,7 +161,7 @@ leaflet(dat_map) %>%
 
 saveRDS(dat, here("data/2023_cmp_temperature_standard_depths.rds"))
 
-# heat stress -------------------------------------------------------------
+# salmon heat stress -------------------------------------------------------------
 
 dat <- readRDS(here("data/2023_cmp_temperature_standard_depths.rds"))
 
@@ -178,7 +178,7 @@ data_series_out <- dat_heat_stress %>%
   rename(sensor_depth_at_low_tide_m = DEPTH) 
 
 # preliminary heat stress event = obs > 18 degrees + 24 hours
-heat_stress_24 <- dat_heat_stress %>%
+heat_stress_18 <- dat_heat_stress %>%
   identify_heat_stress_events(county, station) %>%
   rename(sensor_depth_at_low_tide_m = DEPTH) %>%
   mutate(
@@ -188,9 +188,8 @@ heat_stress_24 <- dat_heat_stress %>%
     event_duration_days = round(unclass(event_duration_days), digits = 2)
   )
 
-
 # add in data series with no heat stress
-heat_stress_24_out <- heat_stress_24 %>%
+heat_stress_18_out <- heat_stress_18 %>%
   full_join(
     data_series_out,
     by = join_by(county, station, sensor_depth_at_low_tide_m)
@@ -205,8 +204,102 @@ heat_stress_24_out <- heat_stress_24 %>%
   ss_convert_depth_to_ordered_factor() 
 
 saveRDS(
-  heat_stress_24_out,
+  heat_stress_18_out,
   file = here("data/heat_stress_events_18deg_24hrs_not_filtered_standard_depths.rds")
 )
 
+
+# trout heat stress -------------------------------------------------------------
+
+dat <- readRDS(here("data/2023_cmp_temperature_standard_depths.rds"))
+
+dat_heat_stress <- dat %>%
+  rename(
+    TIMESTAMP = timestamp_utc,
+    DEPTH = sensor_depth_at_low_tide_m,
+    VALUE = temperature_degree_c
+  )
+
+# all of the data series in dat_heat_stress - not all have heat stress
+data_series_out <- dat_heat_stress %>%
+  distinct(county, station, DEPTH) %>%
+  rename(sensor_depth_at_low_tide_m = DEPTH) 
+
+# preliminary heat stress event = obs > 20 degrees + 24 hours
+heat_stress_20 <- dat_heat_stress %>%
+  identify_heat_stress_events(county, station, heat_threshold = 20) %>%
+  rename(sensor_depth_at_low_tide_m = DEPTH) %>%
+  mutate(
+    year_utc = factor(year(stress_start)),
+    month_utc = month(stress_start),
+    event_duration_days = difftime(stress_end, stress_start, units = "days"),
+    event_duration_days = round(unclass(event_duration_days), digits = 2)
+  )
+
+# add in data series with no heat stress
+heat_stress_20_out <- heat_stress_20 %>%
+  full_join(
+    data_series_out,
+    by = join_by(county, station, sensor_depth_at_low_tide_m)
+  ) %>% 
+  mutate(
+    event_duration_days = if_else(
+      is.na(event_id) & is.na(event_duration_days), 0, event_duration_days)
+  ) %>%
+  dplyr::select(county, station, year_utc, month_utc, sensor_depth_at_low_tide_m,
+                event_id, stress_start, stress_end, event_duration_days) %>%
+  arrange(county, station, year_utc, sensor_depth_at_low_tide_m) %>% 
+  ss_convert_depth_to_ordered_factor() 
+
+saveRDS(
+  heat_stress_20_out,
+  file = here("data/heat_stress_events_20deg_24hrs_not_filtered_standard_depths.rds")
+)
+
+# mussel heat stress -------------------------------------------------------------
+
+dat <- readRDS(here("data/2023_cmp_temperature_standard_depths.rds"))
+
+dat_heat_stress <- dat %>%
+  rename(
+    TIMESTAMP = timestamp_utc,
+    DEPTH = sensor_depth_at_low_tide_m,
+    VALUE = temperature_degree_c
+  )
+
+# all of the data series in dat_heat_stress - not all have heat stress
+data_series_out <- dat_heat_stress %>%
+  distinct(county, station, DEPTH) %>%
+  rename(sensor_depth_at_low_tide_m = DEPTH) 
+
+# preliminary heat stress event = obs > 25 degrees + 24 hours
+heat_stress_25 <- dat_heat_stress %>%
+  identify_heat_stress_events(county, station, heat_threshold = 25) %>%
+  rename(sensor_depth_at_low_tide_m = DEPTH) %>%
+  mutate(
+    year_utc = factor(year(stress_start)),
+    month_utc = month(stress_start),
+    event_duration_days = difftime(stress_end, stress_start, units = "days"),
+    event_duration_days = round(unclass(event_duration_days), digits = 2)
+  )
+
+# add in data series with no heat stress
+heat_stress_25_out <- heat_stress_25 %>%
+  full_join(
+    data_series_out,
+    by = join_by(county, station, sensor_depth_at_low_tide_m)
+  ) %>% 
+  mutate(
+    event_duration_days = if_else(
+      is.na(event_id) & is.na(event_duration_days), 0, event_duration_days)
+  ) %>%
+  dplyr::select(county, station, year_utc, month_utc, sensor_depth_at_low_tide_m,
+                event_id, stress_start, stress_end, event_duration_days) %>%
+  arrange(county, station, year_utc, sensor_depth_at_low_tide_m) %>% 
+  ss_convert_depth_to_ordered_factor() 
+
+saveRDS(
+  heat_stress_25_out,
+  file = here("data/heat_stress_events_25deg_24hrs_not_filtered_standard_depths.rds")
+)
 

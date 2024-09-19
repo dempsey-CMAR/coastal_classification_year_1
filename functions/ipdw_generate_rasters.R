@@ -80,7 +80,8 @@ ipdw_generate_ns_distances <- function(
     training_seed,
     mean_neigh_dist_m,
     training = NULL,
-    costras = NULL
+    costras = NULL,
+    temperature = NULL
 ) {
   
   if(is.null(path)) path <- here("output/rstack_dist")
@@ -96,7 +97,8 @@ ipdw_generate_ns_distances <- function(
     dist_power, "_",
     grid_factor, "_",
     base_grid, "_",
-    training_seed,
+    training_seed, "_",
+    temperature,
     ".grd"
   )
   

@@ -37,6 +37,7 @@ library(readr)
 library(plotly)
 library(purrr)
 library(RColorBrewer)
+library(readxl)
 library(sf)
 library(spatstat)
 library(stringr)
@@ -169,10 +170,19 @@ costras_sf <- bind_rows(ns, nb_pei) %>%
   st_crop(bbox) 
 
 # stations
-dat <- read_csv(
+dat1 <- read_csv(
   here(paste0("output/sc_likelihood_", standard_depth, ".csv")), 
-  show_col_types = FALSE) %>%
-  nudge_station_coordinates() %>% 
+  show_col_types = FALSE) 
+
+dat2 <- read_xlsx(
+  here("data/Satellite_SC_Likelihood_-0.7C_Table.xlsx")
+) %>%
+  mutate(
+    source = "Satellite",
+    likelihood = round(likelihood, digits = 2)
+  )
+
+dat <- bind_rows(dat1, dat2) %>% 
   st_as_sf(coords = c("longitude", "latitude"), crs = 4617, remove = FALSE) %>% 
   st_transform(crs = st_crs(ns)) %>% 
   mutate(
@@ -180,8 +190,9 @@ dat <- read_csv(
     geom = str_remove(geom, "c\\("),
     geom = str_remove(geom, "\\)")
   ) %>% 
-  separate(geom, into = c("east", "north"), sep = ", ") %>% 
+  separate(geom, into = c("east", "north"), sep = ", ") %>%
   mutate(station2 = paste(station, likelihood, sep = ": "))
+
 
 if(like_offset == TRUE) {
   dat <- dat %>% 
@@ -235,6 +246,8 @@ superchill_obs %>%
 ```
 :::
 
+#### Remote Sensing Data
+There is limited or no Coastal Monitoring Program data at the depth and months of interest for some regions, particularly the Bay of Fundy and parts of Cape Breton. This is due in part to the challenges of deploying equipment in these areas, including extreme tides and ice cover. Remote sensing data was used to supplement the Coastal Monitoring Program data in these regions. Six years (2018 - 2023) of daily sea surface temperature records for July, August, and September were extracted and assigned to stations named "sat_1", "sat_2", etc. (@fig-station-likelihood). These time series were used to calculate heat stress likelihood and included in the interpolation, as described below. For more detail on the satellite data, refer to the [GHRSST metadata description](https://cmr.earthdata.nasa.gov/search/concepts/C1996881146-POCLOUD.html?token=Bearer%20eyJ0eXAiOiJKV1QiLCJvcmlnaW4iOiJFYXJ0aGRhdGEgTG9naW4iLCJzaWciOiJlZGxqd3RwdWJrZXlfb3BzIiwiYWxnIjoiUlMyNTYifQ.eyJ0eXBlIjoiT0F1dGgiLCJjbGllbnRfaWQiOiJPTHBBWmxFNEhxSU9NcjBUWXFnN1VRIiwiZXhwIjoxNzI2NzU2MTU3LCJpYXQiOjE3MjQxNjQxNTcsImlzcyI6IkVhcnRoZGF0YSBMb2dpbiIsInVpZCI6ImphbWVzY3VubmluZ2hhbTkxOSJ9.UuppDFbupcnWCR7v68AcjmvCq7hrXrI6FfriD9x6Y3W9Npr5zTZl_WkD9Qcm1Cy4TCvG5UJoJYh70c_cTRlhNKOrKQTkxZqcq-iAI8cw-ThELOGlrkboz4TpJCzDuM3rGs1Af-ayAl3vwsLyzCOC22YDBXNEqDV0Cl9vWz-xuPCQQaAbiOAItNyRl6fVuJ_80tuCjDRot2Dj2uLnz-Ey8ypBgWkMvQNBUmSOkTSnMyknuBoeFD3SHozfODB-DdgLzBsb55EdXUb1a7AdSBLw24BYbwRkawPiYr865p_lKaGqDIixSHV5HcrU2rlP6xDfsVXJFWGVosOg6yciMTjrmA).
 
 ### Likelihood
 
@@ -267,6 +280,14 @@ superchill_pal <- colorNumeric(
 
 leaflet(dat) %>%
   addProviderTiles(providers$CartoDB.Positron) %>%
+  addCircleMarkers(
+    dat = dat2,
+    ~longitude, ~latitude,
+    radius = 8, weight = 1, stroke = FALSE,
+    color = NA,
+    fillColor = "grey", fillOpacity = 1,
+    group = "5+"
+  ) %>% 
   add_circle_markers(
     dat = filter(dat, n_year == 1), 
     fill_col = ~superchill_pal(likelihood), group = "1"
@@ -284,7 +305,7 @@ leaflet(dat) %>%
     fill_col = ~superchill_pal(likelihood), group = "4"
   ) %>% 
   add_circle_markers(
-    dat = filter(dat, n_year == 5), 
+    dat = filter(dat, n_year >= 5), 
     fill_col = ~superchill_pal(likelihood), group = "5+"
   ) %>% 
   addLegend(
@@ -870,7 +891,6 @@ for (i in 1:dim(rstack_dist)[3]) {
     ) 
   
   subchunkify(m, fig_height = 7, fig_width = 8.5)
-  
 }
 
 ```
