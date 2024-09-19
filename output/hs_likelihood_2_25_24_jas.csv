@@ -1,0 +1,64 @@
+county,station,sensor_depth_at_low_tide_m,n_heat_stress_days,n_year,likelihood,waterbody,latitude,longitude
+Annapolis,Cornwallis,2,0,1,0,Annapolis Basin,44.66939,-65.64479
+Annapolis,Lobster Ledge,2,0,3,0,Annapolis Basin,44.6782,-65.68329
+Antigonish,Captains Pond,2,2.08,3,0.01,Grahams Cove,45.675,-61.908
+Antigonish,Monks Head,2,41.18,3,0.15,Monks Head Harbour,45.654886,-61.828774
+Antigonish,Southside,2,7.59,3,0.03,Antigonish Harbour,45.6598,-61.904158
+Colchester,Malagash,2,0,2,0,Tatamagouche Bay,45.78334451,-63.22519233
+Digby,5008,2,0,1,0,St. Marys Bay,44.503833,-65.932367
+Digby,Centreville 1,2,0,1,0,St. Marys Bay,44.5328,-65.98404
+Digby,Long Beach,2,0,2,0,St. Marys Bay,44.401726,-66.159589
+Digby,Long Island 1,2,0,1,0,St. Marys Bay,44.35013,-66.2243
+Digby,Long Island 2,2,0,2,0,St. Marys Bay,44.333112,-66.202076
+Digby,Sandy Cove,2,0,2,0,St. Marys Bay,44.485671,-66.059566
+Guysborough,1307,2,0,1,0,Country Harbour,45.16005,-61.68007
+Guysborough,Bald Rock,2,0,2,0,Whitehead Harbour,45.19943,-61.191
+Guysborough,Barachois,2,0,1,0,Indian Harbour,45.08461,-61.82237
+Guysborough,Barren Island,2,0,4,0,Marie Joseph Harbour,44.94988,-62.01012
+Guysborough,Center Bay,2,0,5,0,Tor Bay,45.22564,-61.2961
+Guysborough,Dorts Cove 1,2,0,4,0,Chedabucto Bay,45.36076,-61.40706
+Guysborough,Eddy Cove,2,0,2,0,Strait of Canso,45.52511,-61.25595
+Guysborough,Fishermans Island,2,0,1,0,Whitehead Harbour,45.24045,-61.16833
+Guysborough,Madeline Point 1,2,0,5,0,Dover Bay,45.2656,-60.95991
+Guysborough,Meal Rock,2,0,4,0,Fishermans Harbour,45.10312,-61.63028
+Guysborough,Moose Point 1,2,0,5,0,Chedabucto Bay,45.3948,-61.40709
+Guysborough,Northeast Branch,2,1.07,6,0,Whitehead Harbour,45.27063,-61.13499
+Guysborough,Northwest Branch,2,6.9,8,0.01,Whitehead Harbour,45.285278,-61.167778
+Guysborough,Pirate Harbour,2,0,2,0,Strait of Canso,45.58928,-61.37943
+Guysborough,Rook Island 1,2,0,4,0,Chedabucto Bay,45.35227,-61.28686
+Guysborough,Seal Cove 1,2,0,1,0,Dover Bay,45.25184,-61.01773
+Guysborough,The Basin,2,0,3,0,Whitehead Harbour,45.238333,-61.150278
+Guysborough,Tickle Island 1,2,0,3,0,Chedabucto Bay,45.3594,-61.04287
+Halifax,Beaver Point,2,0,4,0,Beaver Harbour,44.87761,-62.39922
+Halifax,Borgles Island,2,0,2,0,Shoal Bay,44.77437,-62.72518
+Halifax,East Gibbs Island,2,0,2,0,Sheet Harbour,44.83858,-62.51107
+Halifax,Owls Head,2,0,2,0,Owls Head Bay,44.73416,-62.81035
+Halifax,Shad Bay,2,0,2,0,Shad Bay,44.50116,-63.81413
+Halifax,Shut-In Island,2,0,6,0,St. Margarets Bay,44.55452,-63.95672
+Halifax,Sober Island,2,0,2,0,Sober Island Pond,44.845186,-62.4662922
+Halifax,Spry Harbour,2,0,5,0,Spry Bay,44.81769,-62.62061
+Inverness,0193,2,6.72,1,0.07,NA,NA,NA
+Inverness,Canso Lock,2,0,2,0,Strait of Canso,45.64687732,-61.41147455
+Inverness,Deep Basin,2,0,1,0,Whycocomagh Basin,45.948201,-61.124562
+Lunenburg,Birchy Head,2,0,5,0,St. Margarets Bay,44.57130379,-64.035121470000007
+Lunenburg,Flat Island,2,0,6,0,Mahone Bay,44.43346,-64.1312
+Lunenburg,Little Rafuse Island,2,0,5,0,Mahone Bay,44.43509,-64.25171
+Lunenburg,Tilley Point,2,0,4,0,St. Margarets Bay,44.5483,-64.01741
+Lunenburg,Upper Blandford,2,0,1,0,Mahone Bay,44.50889,-64.13291
+Pictou,Olding Island,2,0,2,0,Merigomish Harbour,45.644,-62.468
+Queens,Mersey Point,2,0,2,0,Liverpool Bay,44.02611,-64.66574
+Richmond,Cape Auguet,2,0,3,0,Arichat Harbour,45.49824,-61.0913
+Richmond,Kavanagh Point,2,0,3,0,Arichat Harbour,45.49823692,-61.01930751
+Richmond,Red Point,2,0,1,0,Little Harbour,45.56094,-60.7611
+Shelburne,Blue Island,2,0,4,0,Green Harbour,43.68621,-65.16825
+Shelburne,Camerons Cove,2,0,1,0,Woods Harbour,43.49714,-65.73784
+Shelburne,Ingomar,2,0,5,0,Negro Harbour,43.52369502,-65.35572913
+Shelburne,Little Harbour,2,0,1,0,Little Harbour,43.7169,-65.008796
+Shelburne,McNutts Island,2,0,3,0,Shelburne Harbour,43.63034,-65.26101
+Shelburne,Taylors Rock,2,0,3,0,Port La Tour,43.46887,-65.43173
+Victoria,North Harbour,2,0,1,0,Aspy Bay,46.91123,-60.47478
+Yarmouth,Big Pond Point,2,0,2,0,Chebogue Harbour,43.770388,-66.135192
+Yarmouth,Lobster Bay,2,0,2,0,Lobster Bay,43.67902,-65.89818
+Yarmouth,Morris Island,2,0,1,0,Lobster Bay,43.79075,-65.91163
+Yarmouth,Ram Island,2,0,4,0,Lobster Bay,43.68447,-65.83601
+Yarmouth,Wedgeport,2,0,3,0,Lobster Bay,43.69405,-65.95942
