@@ -107,7 +107,7 @@ interp_params <- data.frame(
 # training_seed <- interp_params$training_seed
 # like_offset <- interp_params$like_offset
 
-overlapped <- TRUE # not sure what this does
+overlapped <- TRUE 
 paramlist <- "likelihood"
 ```
 
@@ -183,7 +183,7 @@ dat2 <- read_xlsx(
   )
 
 dat <- bind_rows(dat1, dat2) %>% 
-  st_as_sf(coords = c("longitude", "latitude"), crs = 4617, remove = FALSE) %>% 
+  st_as_sf(coords = c("longitude", "latitude"), crs = 4617, remove = FALSE) %>%
   st_transform(crs = st_crs(ns)) %>% 
   mutate(
     geom = as.character(geometry),
