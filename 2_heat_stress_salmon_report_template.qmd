@@ -109,7 +109,7 @@ interp_params <- data.frame(
 # training_seed <- interp_params$training_seed
 # like_offset <- interp_params$like_offset
 
-overlapped <- TRUE # not sure what this does
+overlapped <- TRUE 
 paramlist <- "likelihood"
 ```
 
@@ -141,7 +141,7 @@ heat_stress_pal <- colorNumeric(
 year_pal <- viridis(length(unique(prelim_heat_stress$year_utc)), option = "C")
 ```
 
-# Temperature Layer: Heat Stress
+# Temperature Layer: Heat Stress for Salmon
 
 **`r Sys.Date()`**
 
@@ -379,7 +379,7 @@ costras_sf <- bind_rows(ns, nb_pei) %>%
 # standardized - for analysis
 dat1 <- read_csv(
   here(paste0(
-    "output/hs_likelihood_", standard_depth, "_18_24_jas.csv")
+    "output/hs_likelihood_", standard_depth, "_18_24.csv")
   ),
   show_col_types = FALSE) %>% 
   nudge_station_coordinates() %>%

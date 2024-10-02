@@ -1,11 +1,8 @@
 temperature,standard_depth,min_number_years,costras_res,range_factor,dist_power,grid_factor,base_grid,training_seed,like_offset,n_training,n_test,r2,rmse,pe,logmse
-heat_stress_salmon,5,1,500,50,1,1.5,10000,55616,FALSE,50,16,0.28,0.16,67.47,-3.65
+superchill,5,2,500,50,1,1.5,10000,23634,FALSE,44,9,0.41,0.17,122.95,-3.51
+superchill,5,2,500,50,1,1.5,10000,23634,FALSE,44,9,0.41,0.17,122.95,-3.51
+superchill,5,2,500,50,2,1.5,10000,23634,FALSE,44,9,0.41,0.17,122.95,-3.51
 heat_stress_salmon,5,2,500,50,1,1.5,10000,55616,FALSE,37,10,0.8,0.08,95.44,-5.15
-heat_stress_salmon,5,1,500,50,2,1.5,10000,55616,FALSE,50,16,0.28,0.16,67.47,-3.65
 heat_stress_salmon,5,2,500,50,2,1.5,10000,55616,FALSE,37,10,0.8,0.08,95.44,-5.15
-heat_stress_trout,5,1,500,50,1,1.5,10000,55616,FALSE,50,16,0.67,0.03,40.57,-6.76
 heat_stress_trout,5,2,500,50,1,1.5,10000,55616,FALSE,38,11,0.69,0.03,62.17,-7.02
 heat_stress_trout,5,2,500,50,2,1.5,10000,55616,FALSE,38,11,0.69,0.03,62.17,-7.02
-heat_stress_trout,5,1,500,50,2,1.5,10000,55616,FALSE,50,16,0.67,0.03,40.57,-6.76
-superchill,5,2,500,50,1,1.5,8000,23634,FALSE,47,6,0.24,0.27,78.56,-2.61
-superchill,5,2,500,50,1,1.5,10000,23634,FALSE,44,9,0.41,0.17,122.95,-3.51

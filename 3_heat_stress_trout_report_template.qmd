@@ -384,7 +384,7 @@ dat1 <- read_csv(
     "output/hs_likelihood_", 
     standard_depth, "_",
     high_temperature,
-    "_24_jas.csv")),
+    "_24.csv")),
   show_col_types = FALSE) 
 
 dat2 <- read_xlsx(
