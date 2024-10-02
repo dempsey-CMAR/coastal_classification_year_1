@@ -30,7 +30,7 @@ source(here("functions/map_stations_by_years_data.R"))
 source(here("functions/merge_stations.R"))
 
 standard_depth <- 5
-high_temperature <- 25
+high_temperature <- 18
 
 theme_set(theme_light())
 
@@ -50,7 +50,7 @@ st_locations <- read_csv(
   merge_stations() %>% 
   distinct(county, station, .keep_all = TRUE)
 
-dat <- readRDS(here("data/2023_cmp_temperature_standard_depths.rds")) %>%
+dat <- readRDS(here("data/2023_cmp_temperature_standard_depths.rds")) %>% 
   dplyr::filter(sensor_depth_at_low_tide_m == standard_depth) %>%
   mutate(
     heat_stress = temperature_degree_c >= high_temperature,
@@ -60,9 +60,10 @@ dat <- readRDS(here("data/2023_cmp_temperature_standard_depths.rds")) %>%
 
 # heat stress events for unfiltered (e.g., not time-standardized) data
 prelim_heat_stress <- readRDS(
-  here(paste0("data/heat_stress_events_", 
-              high_temperature,
-              "deg_24hrs_not_filtered_standard_depths.rds"))
+  here(
+    paste0("data/heat_stress_events_", 
+           high_temperature,
+           "deg_24hrs_not_filtered_standard_depths.rds"))
 ) %>% 
   dplyr::filter(sensor_depth_at_low_tide_m == standard_depth) 
 
@@ -84,7 +85,7 @@ hs_threshold <- annotate(
 
 ```
 
-# OYSTER HEAT STRESS TEMPERATURE OVERVIEW: `r standard_depth` m
+# SALMON HEAT STRESS TEMPERATURE OVERVIEW: `r standard_depth` m
 
 `r Sys.Date()`
 
@@ -160,13 +161,9 @@ dat %>%
     buttons = c('copy', 'csv')
   ), rownames = FALSE)
 ```
-
 :::
 
-All high temperature observations occur in August.
-
-- **All** of these observations are from Deep Basin, Inverness County in 2018. This station gets filtered out of the analysis below because the data series starts in August (i.e., there is no data for July).
-- Will keep July, August, and September for consistency with other heat stress analysis.
+Most high temperature observations occur in July, August, and September.
 
 ### Duration of Heat Stress Events
 
@@ -217,7 +214,11 @@ prelim_heat_stress %>%
 ```
 :::
 
-All heat stress occurs August.
+Most heat stress occurs in July, August, and September.
+
+- The heat stress events beginning in June start on or after June 25, and most carry into July. 
+- Filtering the data to July through August will only exclude the heat stress days in June. 
+  - There are 79 days of heat stress in St. Andrews Channel E (Cape Breton) beginning in late June in 2017. Most of this heat stress (e.g., 74 of the 79 days) occur in July through September and will  be included in the analysis.
 
 ## 2. Filter Data
 
@@ -225,7 +226,7 @@ All heat stress occurs August.
 - For each data series, record the minimum and maximum timestamps (Table 3).
 - Keep all data series that begin July 1 and end September 30 (Table 4).
   - These data series will be checked for data gaps below.
-- Don't automatically keep any data series with heat stress because it's not just presence/absence like superchill - duration matters.
+- Duration of heat stress is part of the likelihood calculation, and so partial datasets with observed high temperatures cannot automatically be included (unlike the superchill analysis, where presence/absence is used to calculate likelihood).
 - Review the excluded data series to see if any can be included (i.e., only missing a few days of data in July or September).
 
 ```{r}
@@ -235,7 +236,7 @@ potential_heat_stress_months <- c(7:9)
 # minimum number of days of data to consider keeping
 min_days_to_keep <- 75
 # maximum mean temperature to consider keeping
-max_temp_to_keep <- 22
+max_temp_to_keep <- 15
 
 # min and max month and day for each station and year
 dat_hs_months <- dat %>% 
@@ -262,7 +263,12 @@ table1 <- dat_hs_months %>%
 
 # station-year-depth data series with data starting in July and ending in September
 table2 <- dat_hs_months %>% 
-  filter(month_utc_min == 7, day_min == 1, month_utc_max == 9, day_max == 30) %>% 
+  filter(
+    month_utc_min == 7, 
+    day_min == 1, 
+    month_utc_max == 9, 
+    day_max == 30
+  ) %>% 
   distinct(
     county, station, year_utc, sensor_depth_at_low_tide_m,
     min_timestamp_utc, max_timestamp_utc, 
@@ -290,7 +296,7 @@ consider <- excluded %>%
     month_utc_min == 7, 
     month_utc_max == 9, 
     time_span_days >= min_days_to_keep
-  ) %>% 
+  ) %>%
   dplyr::select(
     -c(min_timestamp_utc, max_timestamp_utc, month_utc_min, month_utc_max)
   )
@@ -302,7 +308,6 @@ dat_hs_months <- dat_hs_months %>%
     sensor_type, sensor_serial_number,
     sensor_depth_at_low_tide_m, temperature_degree_c
   ) 
-
 ```
 
 ::: panel-tabset 
@@ -368,7 +373,7 @@ consider %>%
 
 ### 3.1 Consider Keeping
 
-- Data series missing observations at the beginning of July and end of September, with a time span of at least `r min_days_to_keep` days (Table 6).
+- Data series missing observations at the beginning of July and/or end of September, with a time span of at least `r min_days_to_keep` days (Table 6).
 
 ```{r}
 #| results: "asis"
@@ -404,14 +409,14 @@ for(i in seq_along(1:nrow(stations_consider))){
 
 ### 3.2 Data Series to Keep
 
-- Time span of at least `r min_days_to_keep` days[^1].
+- Time span of at least `r min_days_to_keep` days[^1] (observations for > 80 % of the potential heat stress months).
 - Mean temperature in July/September is < `r max_temp_to_keep` degrees C.
 
 [^1]: 92 days from July through September
 
 #### Table 7
 
-Stations with partial data in July or September that may still be included in the analysis.
+Stations with partial data in July or September that will be included in the analysis.
 
 ```{r}
 #| message: false
@@ -421,7 +426,10 @@ to_keep1 <- dat_hs_months %>%
     dplyr::select(consider, -c(day_min, day_max)),
     by = join_by(county, station, year_utc, sensor_depth_at_low_tide_m)
   ) %>% 
-  filter(time_span_days >= min_days_to_keep, month_utc %in% c(7, 9)) %>% 
+  filter(
+    time_span_days >= min_days_to_keep, 
+    month_utc %in% c(7, 9) # only looking at first and last month
+    ) %>% 
   group_by(county, station, sensor_depth_at_low_tide_m, year_utc, month_utc) %>% 
   mutate(
     min_day_group = day(min(timestamp_utc)), # min day in July or Sept
@@ -587,6 +595,7 @@ exclude_gaps %>%
 Count the number of years of potential heat stress for each station.
 
 ```{r}
+#| warning: false
 #| message: false
 
 # final standardized dataset
@@ -708,7 +717,7 @@ n_year %>%
 ```{r}
 #| message: false
 
-# heat stress events = obs > 25 degrees + 24 hours
+# heat stress events = obs > 18 degrees + 24 hours
 heat_stress_events <- dat_hs %>%
   rename(
     TIMESTAMP = timestamp_utc,
@@ -727,56 +736,35 @@ heat_stress_events <- dat_hs %>%
     event_duration_days = round(unclass(event_duration_days), digits = 2)
   )
 
-# if(all(is.na(heat_stress_events$event_id))) {
-#   
-#   heat_stress_likelihood <- heat_stress_events %>%
-#     # add in data series with no heat stress
-#     full_join(
-#       data_series,
-#       by = join_by(county, station, year_utc, sensor_depth_at_low_tide_m)
-#     ) %>%
-#     mutate(
-#       event_duration_days = if_else(
-#         is.na(event_id) & is.na(event_duration_days), 0, event_duration_days)
-#     ) %>%
-#     # get total number of heat stress days
-#     group_by(county, station, sensor_depth_at_low_tide_m) %>% 
-#     summarise(
-#       n_heat_stress_days = sum(event_duration_days)
-#     ) %>% 
-#     # calculate likelihood
-#     mutate(likelihood = n_heat_stress_days) %>% 
-#     left_join(st_locations, by = c("county", "station")) %>% 
-#     left_join(n_year, by = join_by(county, station))
-#   
-# } else {
-  # number of days in the heat stress season
-  min_month <- first(potential_heat_stress_months)
-  max_month <- last(potential_heat_stress_months)
-  n_days <- 0
-  
-  for (d in min_month:max_month) n_days <- n_days + days_in_month(d)
-  attr(n_days, "names") <- NULL
-  
-  heat_stress_likelihood <- heat_stress_events %>%
-    # add in data series with no heat stress
-    full_join(
-      data_series,
-      by = join_by(county, station, year_utc, sensor_depth_at_low_tide_m)
-    ) %>%
-    mutate(
-      event_duration_days = if_else(
-        is.na(event_id) & is.na(event_duration_days), 0, event_duration_days)
-    ) %>%
-    # get total number of heat stress days
-    group_by(county, station, sensor_depth_at_low_tide_m) %>% 
-    summarise(n_heat_stress_days = sum(event_duration_days)) %>%
-    full_join(n_year, by = join_by(county, station)) %>% 
-    # calculate likelihood
-    mutate(
-      likelihood = round(n_heat_stress_days / (n_year * n_days), digits = 2)
-    ) %>% 
-    left_join(st_locations, by = c("county", "station")) 
+# number of days in the heat stress season
+min_month <- first(potential_heat_stress_months)
+max_month <- last(potential_heat_stress_months)
+n_days <- 0
+
+for (d in min_month:max_month) n_days <- n_days + days_in_month(d)
+attr(n_days, "names") <- NULL
+
+heat_stress_likelihood <- heat_stress_events %>%
+  # add in data series with no heat stress
+  full_join(
+    data_series,
+    by = join_by(county, station, year_utc, sensor_depth_at_low_tide_m)
+  ) %>%
+  mutate(
+    event_duration_days = if_else(
+      is.na(event_id) & is.na(event_duration_days), 0, event_duration_days)
+  ) %>%
+  # get total number of heat stress days
+  group_by(county, station, sensor_depth_at_low_tide_m) %>% 
+  summarise(
+    n_heat_stress_days = sum(event_duration_days),
+    n_year = length(unique(year_utc))
+  ) %>% 
+  # calculate likelihood
+  mutate(
+    likelihood = round(n_heat_stress_days / (n_year * n_days), digits = 2)
+  ) %>% 
+  left_join(st_locations, by = c("county", "station")) 
   
 write_csv(
   heat_stress_likelihood,
@@ -849,4 +837,118 @@ heat_stress_likelihood %>%
   datatable(options = dt_options, rownames = FALSE)
 ```
 
+:::
+
+
+# APPENDIX A: Check Potential Heat Stress Months
+
+Review months when high temperatures and heat stress events are observed in the filtered data.
+
+## High Temperatures
+
+Month(s) when high temperatures are typically observed.
+
+::: panel-tabset
+
+### Figure 5
+```{r}
+#| fig-height: 6
+#| fig-cap: Number of high temperature observations each month.
+
+p <- dat %>% 
+  inner_join(
+    data_series, 
+    by = join_by(county, station, sensor_depth_at_low_tide_m, year_utc)
+  ) %>% 
+  filter(heat_stress == TRUE) %>% 
+  mutate(year_utc = factor(year_utc)) %>% 
+  ggplot(aes(month_utc, fill = year_utc)) +
+  geom_histogram(binwidth = 1) +
+  scale_x_continuous(
+    "Month", breaks = seq(1, 12), limits = c(1, 12),
+    labels = month(seq(1, 12), label = TRUE)
+  ) +
+  scale_y_continuous("Count") +
+  scale_fill_manual("Year", values = year_pal)
+
+ggplotly(p)
+```
+
+### Table 12
+Number and percent of high temperature observations each month.
+```{r}
+#| tbl-cap: Number and percent of high temperature observations each month.
+dat %>% 
+  inner_join(
+    data_series, 
+    by = join_by(county, station, sensor_depth_at_low_tide_m, year_utc)
+  ) %>% 
+  filter(heat_stress == TRUE) %>% 
+  group_by(month_utc) %>% 
+  summarise(n = n()) %>% 
+  ungroup() %>% 
+  mutate(
+    month = month(month_utc, label = TRUE),
+    n_total = sum(n), 
+    n_percent = round(100 * n / n_total, digits = 2),
+  ) %>% 
+  dplyr::select(month, n, n_percent) %>% 
+  datatable(options = list(
+    dom = 'Bft',
+    searching = FALSE,
+    paging = FALSE,
+    columnDefs = list(list(className = 'dt-center', targets = "_all"))),
+    rownames = FALSE)
+```
+:::
+
+Most high temperature observations occur in July, August, and September.
+
+### Duration of Heat Stress Events
+
+Identify the month(s) when heat stress is typically observed.
+
+::: panel-tabset
+### Figure 2
+```{r}
+#| fig-height: 6
+#| fig-cap: Duration of heat stress events each month by year.
+#| message: false
+
+p <- heat_stress_events %>% 
+  filter(!is.na(month_utc)) %>% 
+  mutate(month_utc = month(month_utc, label = TRUE), year_utc = factor(year_utc)) %>% 
+  group_by(month_utc, year_utc) %>% 
+  summarise(event_duration_days = sum(event_duration_days)) %>% 
+  ungroup() %>% 
+  ggplot(aes(month_utc, event_duration_days, fill = year_utc)) +
+  geom_col(color = NA) +
+  scale_y_continuous("Event Duration (days)") +
+  scale_x_discrete("Month") +
+  scale_fill_manual("Year", values = year_pal) 
+
+ggplotly(p) 
+```
+
+### Table 2
+Number and percent of heat stress days each month.
+```{r}
+heat_stress_events %>% 
+  filter(!is.na(month_utc)) %>% 
+  group_by(month_utc) %>% 
+  summarise(n = sum(event_duration_days)) %>% 
+  ungroup() %>% 
+  mutate(
+    month = month(month_utc, label = TRUE),
+    n_total = sum(n), 
+    n_percent = round(100 * n / n_total, digits = 2),
+  ) %>% 
+  dplyr::select(month, n, n_percent) %>% 
+  datatable(options = list(
+    dom = 'Bft',
+    searching = FALSE,
+    paging = FALSE,
+    columnDefs = list(list(className = 'dt-center', targets = "_all"))
+  ), rownames = FALSE)
+```
 :::
