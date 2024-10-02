@@ -155,7 +155,8 @@ This document provides details on the methods and results of these analyses.
 
 ## 1. Station Heat Stress
 
-In this analysis, heat stress occurs for 24 hours after any temperature observation ≥ `r high_temperature` °C, and a heat stress event is a continuous period of heat stress at a given station and depth [@RN27145]. 
+In this analysis, heat stress occurs for 24 hours after any temperature observation ≥ `r high_temperature` °C, and a heat stress event is a continuous period of heat stress at a given station and depth [@RN27145].
+
 ### Temperature Data 
 The Centre for Marine Applied Research Coastal Monitoring Program data, as submitted to the [Nova Scotia Open Data Portal](https://data.novascotia.ca/browse?q=coastal%20monitoring%20program&sortBy=relevance) in March 2024, was used for this analysis. Automated and human in the loop quality control were applied to the data set, and observations flagged [Fail]{style="color: #DB4325;"} were excluded from the analysis. Deployments that were > 500 m from the original station location are typically renamed and considered a separate station during quality control processes[^11]. However, to provide longer time series and better capture inter-annual variability, these deployments were considered to be from the same station for this analysis. Data from fresh water stations[^1] was not included because they are not reflective of conditions for coastal aquaculture.
 
@@ -344,10 +345,18 @@ To provide adequate coverage around the coast, stations with a minimum of `r min
 #| fig-height: 6
 #| message: false
 #| label: fig-station-likelihood
-#| fig-cap: Heat stress likelihood at each station. Use the `# Years` panel to view stations with 1 to 5+ years of data.
+#| fig-cap: Heat stress likelihood at each station. Use the `# Years` panel to view stations with 1 to 5+ years of data. Thick grey outline indicates stations where satellite data was used because there were no relevant Coastal Monitoring Program data.
 
 leaflet(dat) %>%
   addProviderTiles(providers$CartoDB.Positron) %>%
+  addCircleMarkers(
+    dat = dat2,
+    ~longitude, ~latitude,
+    radius = 8, weight = 1, stroke = FALSE,
+    color = NA,
+    fillColor = "grey", fillOpacity = 1,
+    group = "5+"
+  ) %>% 
   add_circle_markers(
     dat = filter(dat, n_year == 1), 
     fill_col = ~heat_stress_pal(likelihood), group = "1"
