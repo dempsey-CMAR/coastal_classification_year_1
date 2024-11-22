@@ -172,7 +172,8 @@ costras_sf <- bind_rows(ns, nb_pei) %>%
 # stations
 dat1 <- read_csv(
   here(paste0("output/sc_likelihood_", standard_depth, ".csv")), 
-  show_col_types = FALSE) 
+  show_col_types = FALSE) %>% 
+  nudge_station_coordinates() 
 
 dat2 <- read_xlsx(
   here("data/Satellite_SC_Likelihood_-0.7C_Table.xlsx")

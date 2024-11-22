@@ -297,7 +297,8 @@ dat1 <- read_csv(
     standard_depth, "_",
     high_temperature,
     "_24.csv")),
-  show_col_types = FALSE) 
+  show_col_types = FALSE) %>% 
+  nudge_station_coordinates() 
 
 dat2 <- read_xlsx(
   here("data/Satellite_HS_Mussel_25C_Table.xlsx")

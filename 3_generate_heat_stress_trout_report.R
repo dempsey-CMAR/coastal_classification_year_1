@@ -33,7 +33,7 @@ range_factor = 50
 # exponent on the distance used to calculate weights
 # larger values mean only closer stations are included in the weighted average
 # typical values are 1 - 2
-dist_power = 2
+dist_power = 1
 
 # factor used to create the grid that the training data is selected from
 # grid size will be grid_factor * base_grid
